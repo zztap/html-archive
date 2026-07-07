@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>网页归档站</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- 顶部导航 -->
+    <header>
+        <div class="container">
+            <h1 class="logo">📚 网页归档站</h1>
+            <nav>
+                <a href="#" class="active" data-category="all">🏠 首页</a>
+                <a href="#" data-category="tech">💻 科技脚本</a>
+                <a href="#" data-category="knowledge">📚 知识储备</a>
+                <a href="#" data-category="backup">📁 日常备份</a>
+            </nav>
+            <button id="uploadBtn" class="upload-btn">➕ 上传文件</button>
+        </div>
+    </header>
+
+    <!-- 主内容区 -->
+    <main class="container">
+        <!-- 上传面板（默认隐藏） -->
+        <div id="uploadPanel" class="upload-panel hidden">
+            <h2>上传 SingleFile HTML</h2>
+            <form id="uploadForm">
+                <div class="form-group">
+                    <label>选择文件</label>
+                    <input type="file" id="fileInput" accept=".html" required>
+                </div>
+                <div class="form-group">
+                    <label>文章标题</label>
+                    <input type="text" id="titleInput" placeholder="自动从文件名读取" required>
+                </div>
+                <div class="form-group">
+                    <label>分类</label>
+                    <select id="categoryInput">
+                        <option value="tech">💻 科技脚本</option>
+                        <option value="knowledge">📚 知识储备</option>
+                        <option value="backup">📁 日常备份</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>标签（逗号分隔）</label>
+                    <input type="text" id="tagsInput" placeholder="如：Python, 教程, 工具">
+                </div>
+                <button type="submit" class="submit-btn">上传</button>
+            </form>
+            <div id="uploadStatus" class="status"></div>
+        </div>
+
+        <!-- 文章列表 -->
+        <section id="articles" class="articles-grid">
+            <!-- 动态生成 -->
+        </section>
+    </main>
+
+    <!-- 配置面板 -->
+    <div id="configModal" class="modal hidden">
+        <div class="modal-content">
+            <h2>⚙️ 配置</h2>
+            <div class="form-group">
+                <label>GitHub Token</label>
+                <input type="password" id="githubToken" placeholder="ghp_xxxx">
+            </div>
+            <div class="form-group">
+                <label>GitHub 仓库 (用户名/仓库名)</label>
+                <input type="text" id="githubRepo" placeholder="username/html-archive">
+            </div>
+            <button id="saveConfig" class="submit-btn">保存</button>
+            <button id="closeConfig" class="cancel-btn">取消</button>
+        </div>
+    </div>
+
+    <!-- 配置按钮 -->
+    <button id="configBtn" class="config-fab">⚙️</button>
+
+    <script src="app.js"></script>
+</body>
+</html>
