@@ -69,7 +69,7 @@ nav a:hover, nav a.active {
     background: #2ecc71;
 }
 
-/* 上传面板 */
+/* 上传/编辑面板 */
 .upload-panel {
     background: white;
     padding: 30px;
@@ -126,6 +126,10 @@ nav a:hover, nav a.active {
     margin-left: 10px;
 }
 
+.cancel-btn:hover {
+    background: #7f8c8d;
+}
+
 .status {
     margin-top: 15px;
     padding: 10px;
@@ -173,6 +177,7 @@ nav a:hover, nav a.active {
 .article-card h3 {
     margin-bottom: 10px;
     font-size: 1.1rem;
+    word-break: break-word;
 }
 
 .article-card .meta {
@@ -218,6 +223,11 @@ nav a:hover, nav a.active {
     align-items: center;
 }
 
+.article-card .actions {
+    display: flex;
+    gap: 8px;
+}
+
 .article-card .view-btn {
     background: #3498db;
     color: white;
@@ -231,6 +241,34 @@ nav a:hover, nav a.active {
 
 .article-card .view-btn:hover {
     background: #2980b9;
+}
+
+.article-card .edit-btn {
+    background: #f39c12;
+    color: white;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.article-card .edit-btn:hover {
+    background: #e67e22;
+}
+
+.article-card .delete-btn {
+    background: #e74c3c;
+    color: white;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 0.9rem;
+}
+
+.article-card .delete-btn:hover {
+    background: #c0392b;
 }
 
 .article-card .date {
@@ -252,6 +290,10 @@ nav a:hover, nav a.active {
     font-size: 1.5rem;
     cursor: pointer;
     box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+}
+
+.config-fab:hover {
+    background: #34495e;
 }
 
 /* 模态框 */
