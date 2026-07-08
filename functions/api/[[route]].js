@@ -42,7 +42,7 @@ function getEnv(env) {
 }
 
 
-// ====== GitHub API 代理 ======
+// ====== GitHub Contents API 代理（读/删，≤1MB 写） ======
 async function githubRequest(env, apiPath, options = {}) {
     const { repo, token } = getEnv(env);
     const url = `https://api.github.com/repos/${repo}/contents/${apiPath}`;
@@ -67,6 +67,96 @@ async function githubRequest(env, apiPath, options = {}) {
         data = { message: "解析响应失败" };
     }
     return { status: res.status, data };
+}
+
+
+// ====== GitHub Git Data API（大文件上传，≤100MB） ======
+async function uploadLargeFile(env, filePath, content, message, retries = 3) {
+    const { repo, token } = getEnv(env);
+    const baseUrl = `https://api.github.com/repos/${repo}`;
+    const headers = {
+        'Authorization': `token ${token}`,
+        'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'html-archive-cf-proxy',
+        'Content-Type': 'application/json'
+    };
+
+    for (let attempt = 0; attempt <= retries; attempt++) {
+        try {
+            // 1. 创建 blob（把 base64 内容存到 Git 对象存储）
+            const blobRes = await fetch(`${baseUrl}/git/blobs`, {
+                method: 'POST', headers,
+                body: JSON.stringify({ content, encoding: 'base64' })
+            });
+            if (!blobRes.ok) {
+                const err = await blobRes.json().catch(() => ({}));
+                return { status: blobRes.status, data: { error: '创建 blob 失败', detail: err } };
+            }
+            const blobData = await blobRes.json();
+
+            // 2. 获取最新 commit SHA
+            const refRes = await fetch(`${baseUrl}/git/refs/heads/main`, { headers });
+            if (!refRes.ok) {
+                return { status: refRes.status, data: { error: '获取分支引用失败' } };
+            }
+            const refData = await refRes.json();
+            const parentSha = refData.object.sha;
+
+            // 3. 获取当前 commit 的 tree SHA
+            const commitRes = await fetch(`${baseUrl}/git/commits/${parentSha}`, { headers });
+            if (!commitRes.ok) {
+                return { status: commitRes.status, data: { error: '获取 commit 信息失败' } };
+            }
+            const commitData = await commitRes.json();
+            const baseTreeSha = commitData.tree.sha;
+
+            // 4. 创建新 tree（包含已有文件 + 新文件）
+            const treeRes = await fetch(`${baseUrl}/git/trees`, {
+                method: 'POST', headers,
+                body: JSON.stringify({
+                    base_tree: baseTreeSha,
+                    tree: [{ path: filePath, mode: '100644', type: 'blob', sha: blobData.sha }]
+                })
+            });
+            if (!treeRes.ok) {
+                return { status: treeRes.status, data: { error: '创建 tree 失败' } };
+            }
+            const treeData = await treeRes.json();
+
+            // 5. 创建新 commit
+            const newCommitRes = await fetch(`${baseUrl}/git/commits`, {
+                method: 'POST', headers,
+                body: JSON.stringify({ message, tree: treeData.sha, parents: [parentSha] })
+            });
+            if (!newCommitRes.ok) {
+                return { status: newCommitRes.status, data: { error: '创建 commit 失败' } };
+            }
+            const newCommitData = await newCommitRes.json();
+
+            // 6. 更新分支引用
+            const updateRes = await fetch(`${baseUrl}/git/refs/heads/main`, {
+                method: 'PATCH', headers,
+                body: JSON.stringify({ sha: newCommitData.sha, force: false })
+            });
+
+            // 409 = 并发冲突，重试
+            if (updateRes.status === 409 && attempt < retries) {
+                await new Promise(r => setTimeout(r, 300 * (attempt + 1)));
+                continue;
+            }
+
+            if (!updateRes.ok) {
+                return { status: updateRes.status, data: { error: '更新分支引用失败' } };
+            }
+
+            return { status: 200, data: { sha: newCommitData.sha, success: true } };
+        } catch (e) {
+            if (attempt >= retries) {
+                return { status: 500, data: { error: '服务器内部错误: ' + e.message } };
+            }
+            await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
+        }
+    }
 }
 
 
@@ -95,7 +185,7 @@ export async function onRequest(context) {
 
     // ---------- 公开路由（无需登录） ----------
 
-    // GET /api/ping — 探针，确认 Functions 是否运行
+    // GET /api/ping — 探针
     if (method === 'GET' && path === '/api/ping') {
         return json({ pong: true, hasToken: !!env.GITHUB_TOKEN, hasPassword: !!env.ADMIN_PASSWORD, repo: env.GITHUB_REPO || '未设置' });
     }
@@ -108,7 +198,7 @@ export async function onRequest(context) {
         return json(data);
     }
 
-    // GET /api/articles/:filename — 读取单个归档 HTML 的元信息
+    // GET /api/articles/:filename — 读取单个归档 HTML 的元信息（获取 SHA 用于删除）
     if (method === 'GET' && path.startsWith('/api/articles/')) {
         const filename = path.replace('/api/articles/', '');
         const { status, data } = await githubRequest(env, `archive/${filename}`);
@@ -134,7 +224,6 @@ export async function onRequest(context) {
 
     // ---------- 管理员路由（需要 Bearer token） ----------
 
-    // 所有写操作都需要验证
     const writePaths = [
         { method: 'PUT',  prefix: '/api/articles' },      // 更新 index.json
         { method: 'PUT',  prefix: '/api/archive/' },       // 上传 HTML 文件
@@ -146,7 +235,7 @@ export async function onRequest(context) {
         return json({ error: '未登录或 session 已过期' }, 401);
     }
 
-    // PUT /api/articles — 更新 index.json
+    // PUT /api/articles — 更新 index.json（Contents API，文件小不走 Git Data）
     if (method === 'PUT' && path === '/api/articles') {
         const body = await request.json();
         const putBody = {
@@ -164,21 +253,18 @@ export async function onRequest(context) {
         return json(data);
     }
 
-    // PUT /api/archive/:filename — 上传 HTML 文件
+    // PUT /api/archive/:filename — 上传大文件 HTML（Git Data API，≤100MB）
     if (method === 'PUT' && path.startsWith('/api/archive/')) {
         const filename = path.replace('/api/archive/', '');
         const body = await request.json();
-        const { status, data } = await githubRequest(env, `archive/${filename}`, {
-            method: 'PUT',
-            body: JSON.stringify({ message: body.message, content: body.content })
-        });
-        if (status < 200 || status > 299) {
-            return json({ error: '上传失败', detail: data }, status);
+        const result = await uploadLargeFile(env, `archive/${filename}`, body.content, body.message);
+        if (result.status > 299) {
+            return json({ error: '上传失败', detail: result.data }, result.status);
         }
-        return json(data);
+        return json(result.data);
     }
 
-    // DELETE /api/archive/:filename — 删除 HTML 文件
+    // DELETE /api/archive/:filename — 删除 HTML 文件（Contents API 可删任意大小）
     if (method === 'DELETE' && path.startsWith('/api/archive/')) {
         const filename = path.replace('/api/archive/', '');
         const body = await request.json();

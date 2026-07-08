@@ -364,9 +364,9 @@ async function handleUpload(e) {
         return;
     }
 
-    // 限制单文件 1MB (GitHub Contents API 推荐及常规限制)
-    if (file.size > 1 * 1024 * 1024) {
-        showUploadStatus('文件超过 1MB，请使用 git push 上传，网页上传最大支持 1MB', 'error');
+    // 限制单文件 100MB (GitHub Git Data API 限制)
+    if (file.size > 100 * 1024 * 1024) {
+        showUploadStatus('文件超过 100MB，GitHub API 拒绝上传', 'error');
         return;
     }
 
