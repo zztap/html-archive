@@ -403,6 +403,16 @@ async function handleUpload(e) {
             xhr.onload = () => {
                 if (xhr.status >= 200 && xhr.status < 300) {
                     resolve(JSON.parse(xhr.responseText));
+                } else if (xhr.status === 401) {
+                    // session 过期，弹登录框
+                    window.adminToken = null;
+                    if (typeof window.requireAdmin === 'function') {
+                        window.requireAdmin(() => {
+                            // 重新登录后自动重试上传
+                            document.getElementById('uploadBtn').click();
+                        });
+                    }
+                    reject(new Error('登录已过期，请重新登录'));
                 } else {
                     reject(new Error(`上传 HTML 错误（HTTP ${xhr.status}）`));
                 }
@@ -509,10 +519,19 @@ async function uploadToGithub(path, content, message, retries = 3) {
             return response.json();
         }
 
-        // 409 Conflict 表示 SHA 在获取和 PUT 之间被其他操作修改，执行退避并重试
+        // 409 Conflict → SHA 过期退避重试
         if (response.status === 409 && attempt < retries) {
             await new Promise(resolve => setTimeout(resolve, 300 * (attempt + 1)));
             continue;
+        }
+
+        // 401 登录过期，弹登录框
+        if (response.status === 401) {
+            window.adminToken = null;
+            if (typeof window.requireAdmin === 'function') {
+                window.requireAdmin(() => {});
+            }
+            throw new Error('登录已过期，请重新登录');
         }
 
         const errData = await response.json().catch(() => ({}));
