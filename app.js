@@ -42,10 +42,12 @@ function encodeBase64(str) {
 
 // 设置事件监听
 function setupEventListeners() {
-    // 上传按钮
+    // 上传按钮（非管理员先弹登录）
     document.getElementById('uploadBtn').addEventListener('click', () => {
-        document.getElementById('uploadPanel').classList.remove('hidden');
-        document.getElementById('editPanel').classList.add('hidden');
+        window.requireAdmin(() => {
+            document.getElementById('uploadPanel').classList.remove('hidden');
+            document.getElementById('editPanel').classList.add('hidden');
+        });
     });
 
     // 取消上传

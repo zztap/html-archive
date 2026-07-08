@@ -1,6 +1,7 @@
 // admin.js — 管理员登录/退出/状态管理
 
 window.adminToken = null;
+let pendingAction = null; // 登录成功后执行的回调
 
 window.isAdmin = function() {
     return !!window.adminToken;
@@ -22,18 +23,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function updateUI() {
     if (window.isAdmin()) {
-        document.getElementById('uploadBtn').style.display = 'inline-flex';
         adminLoginBtn.classList.add('hidden');
         adminLogoutBtn.classList.remove('hidden');
     } else {
-        document.getElementById('uploadBtn').style.display = 'none';
         adminLoginBtn.classList.remove('hidden');
         adminLogoutBtn.classList.add('hidden');
     }
 }
 
+// ====== 要求管理员身份（未登录则弹登录框，登录后执行回调） ======
+window.requireAdmin = function(callback) {
+    if (window.isAdmin()) {
+        callback();
+        return;
+    }
+    pendingAction = callback;
+    adminModal.classList.remove('hidden');
+    adminPasswordInput.focus();
+};
+
 // ====== 事件监听 ======
 adminLoginBtn.addEventListener('click', () => {
+    pendingAction = null; // 手动点 🔒 时无后续操作
     adminModal.classList.remove('hidden');
     adminPasswordInput.focus();
 });
@@ -42,12 +53,12 @@ closeAdminBtn.addEventListener('click', () => {
     adminModal.classList.add('hidden');
     adminStatus.textContent = '';
     adminStatus.className = 'status';
+    pendingAction = null;
 });
 
 adminLogoutBtn.addEventListener('click', () => {
     window.adminToken = null;
     updateUI();
-    // 重新加载列表以隐藏编辑/删除操作
     if (typeof loadArticles === 'function') {
         loadArticles();
     }
@@ -58,7 +69,7 @@ adminPasswordInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') handleLogin();
 });
 
-// ====== 登录验证 ======
+// ====== 登录验证（带超时） ======
 async function handleLogin() {
     const password = adminPasswordInput.value;
     if (!password) {
@@ -67,32 +78,59 @@ async function handleLogin() {
     }
 
     showAdminStatus('验证中...', 'success');
+    confirmLoginBtn.disabled = true;
 
     try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 10000); // 10 秒超时
+
         const res = await fetch('/api/auth', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ password })
+            body: JSON.stringify({ password }),
+            signal: controller.signal
         });
+        clearTimeout(timeout);
 
         if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            throw new Error(err.error || '密码错误');
+            let errMsg = '密码错误';
+            try {
+                const err = await res.json();
+                errMsg = err.error || `服务器错误 (${res.status})`;
+            } catch (e) {
+                errMsg = `服务器错误 (${res.status})`;
+            }
+            throw new Error(errMsg);
         }
 
         const data = await res.json();
-        window.adminToken = data.token; // 保存并暴露给全局使用
+        window.adminToken = data.token;
 
         adminModal.classList.add('hidden');
         updateUI();
         adminPasswordInput.value = '';
+        adminStatus.textContent = '';
+        adminStatus.className = 'status';
 
-        // 重新加载文章列表（激活管理控制选项）
+        // 刷新文章列表（显示编辑/删除按钮）
         if (typeof loadArticles === 'function') {
             loadArticles();
         }
+
+        // 执行登录前的待处理操作
+        if (pendingAction) {
+            const action = pendingAction;
+            pendingAction = null;
+            action();
+        }
     } catch (error) {
-        showAdminStatus(error.message, 'error');
+        if (error.name === 'AbortError') {
+            showAdminStatus('请求超时，请检查网络或稍后重试', 'error');
+        } else {
+            showAdminStatus(error.message, 'error');
+        }
+    } finally {
+        confirmLoginBtn.disabled = false;
     }
 }
 
