@@ -149,7 +149,7 @@ body {
     border: 1px solid transparent;
     padding: 9px 16px;
     border-radius: var(--radius-md);
-    width: 200px;
+    width: 180px;
     font-size: 0.875rem;
     color: var(--text-main);
     transition: var(--transition);
@@ -160,7 +160,7 @@ body {
     background: var(--bg-card);
     border-color: var(--primary);
     box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
-    width: 260px;
+    width: 240px;
 }
 
 /* 极简上传按钮 */
@@ -184,6 +184,49 @@ body {
     background: var(--primary-hover);
     transform: translateY(-1px);
     box-shadow: 0 6px 16px rgba(79, 70, 229, 0.25);
+}
+
+/* 顶部栏登录和退出按钮样式 */
+.login-header-btn {
+    background: #f1f5f9;
+    color: var(--text-main);
+    border: 1px solid var(--border);
+    padding: 10px 20px;
+    border-radius: var(--radius-md);
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.login-header-btn:hover {
+    background: var(--border);
+    color: var(--text-main);
+    transform: translateY(-1px);
+}
+
+.logout-header-btn {
+    background: #fef2f2;
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    padding: 10px 20px;
+    border-radius: var(--radius-md);
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.logout-header-btn:hover {
+    background: #fee2e2;
+    color: #dc2626;
+    transform: translateY(-1px);
 }
 
 /* 3. Hero 引导模块 */
@@ -612,32 +655,6 @@ body {
 .article-card .delete-btn:hover {
     background: var(--error-bg);
     color: var(--error);
-}
-
-/* 7. 配置按钮 Floating FAB */
-.config-fab {
-    position: fixed;
-    bottom: 30px;
-    right: 30px;
-    width: 54px;
-    height: 54px;
-    border-radius: 50%;
-    background: var(--text-main);
-    color: white;
-    border: none;
-    font-size: 1.4rem;
-    cursor: pointer;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-    transition: var(--transition);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 99;
-}
-
-.config-fab:hover {
-    background: var(--primary);
-    transform: rotate(45deg) scale(1.05);
 }
 
 /* 8. 现代模态弹窗 */

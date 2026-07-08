@@ -1,7 +1,6 @@
 // admin.js — 管理员登录/退出/状态管理
 
 window.adminToken = null;
-let pendingAction = null; // 登录成功后执行的回调
 
 window.isAdmin = function() {
     return !!window.adminToken;
@@ -23,28 +22,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function updateUI() {
     if (window.isAdmin()) {
+        document.getElementById('uploadBtn').style.display = 'inline-flex';
         adminLoginBtn.classList.add('hidden');
         adminLogoutBtn.classList.remove('hidden');
     } else {
+        document.getElementById('uploadBtn').style.display = 'none';
         adminLoginBtn.classList.remove('hidden');
         adminLogoutBtn.classList.add('hidden');
     }
 }
 
-// ====== 要求管理员身份（未登录则弹登录框，登录后执行回调） ======
-window.requireAdmin = function(callback) {
-    if (window.isAdmin()) {
-        callback();
-        return;
-    }
-    pendingAction = callback;
-    adminModal.classList.remove('hidden');
-    adminPasswordInput.focus();
-};
-
 // ====== 事件监听 ======
 adminLoginBtn.addEventListener('click', () => {
-    pendingAction = null; // 手动点 🔒 时无后续操作
     adminModal.classList.remove('hidden');
     adminPasswordInput.focus();
 });
@@ -53,7 +42,6 @@ closeAdminBtn.addEventListener('click', () => {
     adminModal.classList.add('hidden');
     adminStatus.textContent = '';
     adminStatus.className = 'status';
-    pendingAction = null;
 });
 
 adminLogoutBtn.addEventListener('click', () => {
@@ -82,7 +70,7 @@ async function handleLogin() {
 
     try {
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 10000); // 10 秒超时
+        const timeout = setTimeout(() => controller.abort(), 10000);
 
         const res = await fetch('/api/auth', {
             method: 'POST',
@@ -112,16 +100,12 @@ async function handleLogin() {
         adminStatus.textContent = '';
         adminStatus.className = 'status';
 
+        // 登录成功提示
+        showToast('✅ 登录成功');
+
         // 刷新文章列表（显示编辑/删除按钮）
         if (typeof loadArticles === 'function') {
             loadArticles();
-        }
-
-        // 执行登录前的待处理操作
-        if (pendingAction) {
-            const action = pendingAction;
-            pendingAction = null;
-            action();
         }
     } catch (error) {
         if (error.name === 'AbortError') {
@@ -138,4 +122,19 @@ async function handleLogin() {
 function showAdminStatus(message, type) {
     adminStatus.textContent = message;
     adminStatus.className = `status ${type}`;
+}
+
+// Toast 提示
+function showToast(message) {
+    const toast = document.createElement('div');
+    toast.textContent = message;
+    toast.style.cssText = `
+        position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+        background: #10b981; color: white; padding: 12px 28px; border-radius: 10px;
+        font-size: 15px; font-weight: 600; z-index: 9999;
+        box-shadow: 0 4px 20px rgba(16,185,129,0.4);
+        animation: toastIn 0.3s ease, toastOut 0.3s ease 1.7s forwards;
+    `;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 2200);
 }

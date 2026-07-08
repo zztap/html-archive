@@ -33,8 +33,17 @@
                 <div class="search-box">
                     <input type="text" id="searchInput" placeholder="🔍 搜索标题、标签或描述...">
                 </div>
-                <button id="uploadBtn" class="upload-btn">
+                <!-- 上传归档按钮（默认隐藏，登录后显示） -->
+                <button id="uploadBtn" class="upload-btn" style="display: none;">
                     <span class="btn-icon">➕</span>上传归档
+                </button>
+                <!-- 管理登录按钮 -->
+                <button id="adminLoginBtn" class="login-header-btn">
+                    <span class="btn-icon">🔒</span>管理登录
+                </button>
+                <!-- 退出登录按钮（默认隐藏，登录后显示） -->
+                <button id="adminLogoutBtn" class="logout-header-btn hidden">
+                    <span class="btn-icon">🚪</span>退出管理
                 </button>
             </div>
         </div>
@@ -44,7 +53,7 @@
     <section class="hero-section">
         <div class="container hero-container">
             <h2>静态网页与知识脚本的数字保险箱</h2>
-            <p>基于 GitHub Pages 构建的轻量级、无服务器化个人知识归档与备份空间。</p>
+            <p>基于 GitHub Pages + Cloudflare Pages 构建的轻量级、无服务器化个人知识归档与备份空间。</p>
         </div>
     </section>
 
@@ -170,9 +179,6 @@
         </div>
     </div>
 
-    <!-- 管理登录按钮 -->
-    <button id="adminLoginBtn" class="config-fab" title="管理员登录">🔒</button>
-
     <!-- 管理员密码弹窗 -->
     <div id="adminModal" class="modal hidden">
         <div class="modal-content">
@@ -192,9 +198,6 @@
             <div id="adminStatus" class="status"></div>
         </div>
     </div>
-
-    <!-- 退出按钮（登录后显示） -->
-    <button id="adminLogoutBtn" class="config-fab hidden" title="退出管理" style="background: #ef4444; bottom: 100px;">🚪</button>
 
     <script src="app.js"></script>
     <script src="admin.js"></script>
