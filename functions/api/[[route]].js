@@ -95,6 +95,11 @@ export async function onRequest(context) {
 
     // ---------- 公开路由（无需登录） ----------
 
+    // GET /api/ping — 探针，确认 Functions 是否运行
+    if (method === 'GET' && path === '/api/ping') {
+        return json({ pong: true, hasToken: !!env.GITHUB_TOKEN, hasPassword: !!env.ADMIN_PASSWORD, repo: env.GITHUB_REPO || '未设置' });
+    }
+
     // GET /api/articles — 读取 index.json
     if (method === 'GET' && path === '/api/articles') {
         const { status, data } = await githubRequest(env, 'data/index.json');
