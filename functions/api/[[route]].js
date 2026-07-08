@@ -211,7 +211,7 @@ export async function onRequest(context) {
 
     // GET /api/articles/:filename — 读取单个归档 HTML 的元信息（获取 SHA 用于删除）
     if (method === 'GET' && path.startsWith('/api/articles/')) {
-        const filename = path.replace('/api/articles/', '');
+        const filename = decodeURIComponent(path.replace('/api/articles/', ''));
         const { status, data } = await githubRequest(env, `archive/${filename}`);
         if (status !== 200) return json({ error: '文件不存在' }, 404);
         return json(data);
@@ -266,7 +266,7 @@ export async function onRequest(context) {
 
     // PUT /api/archive/:filename — 上传大文件 HTML（Git Data API，≤100MB）
     if (method === 'PUT' && path.startsWith('/api/archive/')) {
-        const filename = path.replace('/api/archive/', '');
+        const filename = decodeURIComponent(path.replace('/api/archive/', ''));
         const body = await request.json();
         const result = await uploadLargeFile(env, `archive/${filename}`, body.content, body.message);
         if (result.status > 299) {
@@ -277,7 +277,7 @@ export async function onRequest(context) {
 
     // DELETE /api/archive/:filename — 删除 HTML 文件（Contents API 可删任意大小）
     if (method === 'DELETE' && path.startsWith('/api/archive/')) {
-        const filename = path.replace('/api/archive/', '');
+        const filename = decodeURIComponent(path.replace('/api/archive/', ''));
         const body = await request.json();
         const { status, data } = await githubRequest(env, `archive/${filename}`, {
             method: 'DELETE',
