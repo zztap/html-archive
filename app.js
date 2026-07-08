@@ -321,14 +321,10 @@ async function handleDelete() {
     const article = currentArticles[deleteIndex];
 
     try {
-        // 1. 先尝试删除 HTML 文件。如果删除失败，不继续更新索引，防止产生孤儿文件或信息不一致
-        try {
-            await deleteFromGithub(`archive/${article.filename}`, `删除文件: ${article.filename}`);
-        } catch (e) {
-            throw new Error('从 GitHub 删除 HTML 文件失败，索引未更新：' + e.message);
-        }
+        // 1. 先尝试删除 HTML 文件
+        const deleteResult = await deleteFromGithub(`archive/${article.filename}`, `删除文件: ${article.filename}`);
 
-        // 2. 只有文件删除成功后，才从列表中移除该项
+        // 2. 从列表中移除该项（无论文件是否存在，索引都要更新）
         currentArticles.splice(deleteIndex, 1);
 
         // 3. 上传更新后的索引
@@ -524,15 +520,17 @@ async function uploadToGithub(path, content, message, retries = 3) {
     }
 }
 
-// 从 GitHub 删除文件
 async function deleteFromGithub(path, message) {
     const filename = path.replace('archive/', '');
     
-    // 1. 获取要删除文件的最新 SHA (公开读)
+    // 1. 获取要删除文件的最新 SHA
     const response = await fetch(`/api/articles/${filename}`);
     if (!response.ok) {
-        throw new Error('获取文件信息失败，文件可能不存在');
+        // 文件不存在（已手动删除或上传失败），跳过删除步骤
+        console.warn('文件 ' + filename + ' 不存在，跳过删除');
+        return { skipped: true };
     }
+
     const fileData = await response.json();
     const sha = fileData.sha;
 
