@@ -70,6 +70,14 @@ async function githubRequest(env, apiPath, options = {}) {
 }
 
 
+// ====== CF Pages 部署触发器 ======
+async function triggerDeploy(env) {
+    const hookUrl = env.CF_DEPLOY_HOOK_URL;
+    if (!hookUrl) return;
+    await fetch(hookUrl, { method: 'POST' });
+}
+
+
 // ====== GitHub Git Data API（大文件上传，≤100MB） ======
 async function uploadLargeFile(env, filePath, content, message, retries = 3) {
     const { repo, token } = getEnv(env);
@@ -148,6 +156,9 @@ async function uploadLargeFile(env, filePath, content, message, retries = 3) {
             if (!updateRes.ok) {
                 return { status: updateRes.status, data: { error: '更新分支引用失败' } };
             }
+
+            // 成功后触发 CF Pages 部署（如有配置）
+            triggerDeploy(env).catch(() => {});
 
             return { status: 200, data: { sha: newCommitData.sha, success: true } };
         } catch (e) {
