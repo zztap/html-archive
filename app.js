@@ -1,6 +1,6 @@
 // 配置
-const CONFIG_KEY = 'html-archive-config';
 const DATA_FILE = 'data/index.json';
+const API_BASE = '/api';
 
 // 分类映射
 const CATEGORIES = {
@@ -12,35 +12,32 @@ const CATEGORIES = {
 // 全局变量
 let currentArticles = [];
 let deleteIndex = -1;
+let currentFilter = 'all'; // 记录当前选择的分类过滤
+let currentSort = 'newest'; // 记录当前排序方式
 
 // 初始化
 document.addEventListener('DOMContentLoaded', () => {
-    loadConfig();
     loadArticles();
     setupEventListeners();
 });
 
-// 加载配置
-function loadConfig() {
-    const config = JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}');
-    document.getElementById('githubToken').value = config.token || '';
-    document.getElementById('githubRepo').value = config.repo || '';
+// 定义 UTF-8 安全的 Base64 编解码器（替代已废弃的 escape / unescape）
+function decodeBase64(base64) {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+    return new TextDecoder('utf-8').decode(bytes);
 }
 
-// 保存配置
-function saveConfig() {
-    const config = {
-        token: document.getElementById('githubToken').value,
-        repo: document.getElementById('githubRepo').value
-    };
-    localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
-    document.getElementById('configModal').classList.add('hidden');
-    loadArticles();
-}
-
-// 获取配置
-function getConfig() {
-    return JSON.parse(localStorage.getItem(CONFIG_KEY) || '{}');
+function encodeBase64(str) {
+    const bytes = new TextEncoder().encode(str);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
 }
 
 // 设置事件监听
@@ -61,16 +58,6 @@ function setupEventListeners() {
         document.getElementById('editPanel').classList.add('hidden');
     });
 
-    // 配置按钮
-    document.getElementById('configBtn').addEventListener('click', () => {
-        document.getElementById('configModal').classList.toggle('hidden');
-    });
-
-    document.getElementById('saveConfig').addEventListener('click', saveConfig);
-    document.getElementById('closeConfig').addEventListener('click', () => {
-        document.getElementById('configModal').classList.add('hidden');
-    });
-
     // 删除确认
     document.getElementById('confirmDelete').addEventListener('click', handleDelete);
     document.getElementById('cancelDelete').addEventListener('click', () => {
@@ -84,7 +71,8 @@ function setupEventListeners() {
             e.preventDefault();
             document.querySelectorAll('nav a').forEach(l => l.classList.remove('active'));
             link.classList.add('active');
-            renderArticles(currentArticles, link.dataset.category);
+            currentFilter = link.dataset.category; // 保存当前选中的过滤器
+            renderArticles(currentArticles, currentFilter);
         });
     });
 
@@ -102,32 +90,65 @@ function setupEventListeners() {
             document.getElementById('titleInput').value = name;
         }
     });
+
+    // 搜索事件
+    document.getElementById('searchInput').addEventListener('input', (e) => {
+        const keyword = e.target.value.toLowerCase();
+        if (!keyword) {
+            renderArticles(currentArticles, currentFilter);
+            return;
+        }
+        const filtered = currentArticles.filter(a => {
+            const matchTitle = a.title.toLowerCase().includes(keyword);
+            const matchTags = (a.tags || []).some(t => t.toLowerCase().includes(keyword));
+            const matchDesc = (a.description || '').toLowerCase().includes(keyword);
+            return matchTitle || matchTags || matchDesc;
+        });
+        renderArticles(filtered, currentFilter);
+    });
+
+    // 排序按钮点击
+    document.querySelectorAll('.sort-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentSort = btn.dataset.sort;
+            renderArticles(currentArticles, currentFilter);
+        });
+    });
 }
 
 // 加载文章列表
 async function loadArticles() {
-    const config = getConfig();
-    if (!config.token || !config.repo) {
-        document.getElementById('articles').innerHTML = '<p style="text-align:center; color:#666; padding:40px;">请点击右下角 ⚙️ 配置 GitHub Token 和仓库</p>';
-        return;
-    }
+    // 显示骨架屏
+    document.getElementById('articles').innerHTML = `
+        <div class="skeleton-card">
+            <div class="skeleton-line long"></div>
+            <div class="skeleton-line short"></div>
+            <div class="skeleton-line long"></div>
+        </div>
+        <div class="skeleton-card">
+            <div class="skeleton-line long"></div>
+            <div class="skeleton-line short"></div>
+        </div>
+        <div class="skeleton-card">
+            <div class="skeleton-line long"></div>
+            <div class="skeleton-line short"></div>
+            <div class="skeleton-line long"></div>
+        </div>
+    `;
 
     try {
-        const response = await fetch(`https://api.github.com/repos/${config.repo}/contents/${DATA_FILE}`, {
-            headers: {
-                'Authorization': `token ${config.token}`,
-                'Accept': 'application/vnd.github.v3+json'
-            }
-        });
+        const response = await fetch(`${API_BASE}/articles`);
 
         if (response.ok) {
             const data = await response.json();
-            const content = decodeURIComponent(escape(atob(data.content)));
+            const content = decodeBase64(data.content);
             currentArticles = JSON.parse(content);
-            renderArticles(currentArticles);
+            renderArticles(currentArticles, currentFilter);
         } else if (response.status === 404) {
             currentArticles = [];
-            renderArticles([]);
+            renderArticles([], currentFilter);
         } else {
             throw new Error('加载失败');
         }
@@ -140,24 +161,34 @@ async function loadArticles() {
 // 渲染文章列表
 function renderArticles(articles, filter = 'all') {
     const grid = document.getElementById('articles');
-    const filtered = filter === 'all' ? articles : articles.filter(a => a.category === filter);
+    
+    // 1. 过滤
+    let list = filter === 'all' ? [...articles] : articles.filter(a => a.category === filter);
 
-    if (filtered.length === 0) {
+    // 2. 排序
+    if (currentSort === 'oldest') {
+        list.reverse(); // 原本 newest 在最前，reverse 变成 oldest 在前
+    } else if (currentSort === 'title') {
+        list.sort((a, b) => a.title.localeCompare(b.title, 'zh-CN'));
+    }
+
+    if (list.length === 0) {
         grid.innerHTML = '<p style="text-align:center; color:#666; padding:40px;">暂无文章</p>';
         return;
     }
 
-    grid.innerHTML = filtered.map((article, displayIdx) => {
-        // 找到在原始数组中的索引
+    grid.innerHTML = list.map((article) => {
+        // 找到在原始数组中的对应索引，保证编辑/删除操作的目标准确
         const originalIndex = articles.indexOf(article);
         return `
             <div class="article-card">
                 <div class="card-header">
                     <h3>${escapeHtml(article.title)}</h3>
                     <div class="meta">
-                        <span class="category-tag ${article.category}">${CATEGORIES[article.category]}</span>
+                        <span class="category-tag ${article.category}">${CATEGORIES[article.category] || article.category}</span>
                         <span class="date">${article.date}</span>
                     </div>
+                    ${article.description ? `<p class="card-desc">${escapeHtml(article.description)}</p>` : ''}
                     ${article.tags && article.tags.length > 0 ? `
                         <div class="tags">
                             ${article.tags.map(tag => `<span class="tag">${escapeHtml(tag)}</span>`).join('')}
@@ -167,8 +198,10 @@ function renderArticles(articles, filter = 'all') {
                 <div class="card-footer">
                     <div class="actions">
                         <a href="archive/${article.filename}" target="_blank" class="view-btn">查看</a>
-                        <button class="edit-btn" onclick="openEdit(${originalIndex})">编辑</button>
-                        <button class="delete-btn" onclick="openDelete(${originalIndex})">删除</button>
+                        ${window.isAdmin && window.isAdmin() ? `
+                            <button class="edit-btn" onclick="openEdit(${originalIndex})">编辑</button>
+                            <button class="delete-btn" onclick="openDelete(${originalIndex})">删除</button>
+                        ` : ''}
                     </div>
                 </div>
             </div>
@@ -186,6 +219,7 @@ function openEdit(index) {
     document.getElementById('editTitle').value = article.title;
     document.getElementById('editCategory').value = article.category;
     document.getElementById('editTags').value = (article.tags || []).join(', ');
+    document.getElementById('editDescription').value = article.description || '';
 
     document.getElementById('editPanel').classList.remove('hidden');
     document.getElementById('uploadPanel').classList.add('hidden');
@@ -207,9 +241,8 @@ function openDelete(index) {
 // 处理编辑
 async function handleEdit(e) {
     e.preventDefault();
-    const config = getConfig();
-    if (!config.token || !config.repo) {
-        showEditStatus('请先配置 GitHub Token 和仓库', 'error');
+    if (!window.isAdmin || !window.isAdmin()) {
+        showEditStatus('请先登录管理员账号', 'error');
         return;
     }
 
@@ -217,6 +250,7 @@ async function handleEdit(e) {
     const title = document.getElementById('editTitle').value;
     const category = document.getElementById('editCategory').value;
     const tags = document.getElementById('editTags').value.split(',').map(t => t.trim()).filter(Boolean);
+    const description = document.getElementById('editDescription').value;
 
     showEditStatus('保存中...', 'success');
 
@@ -226,15 +260,16 @@ async function handleEdit(e) {
             ...currentArticles[index],
             title,
             category,
-            tags
+            tags,
+            description
         };
 
         // 保存到 GitHub
-        const indexContent = btoa(unescape(encodeURIComponent(JSON.stringify(currentArticles, null, 2))));
+        const indexContent = encodeBase64(JSON.stringify(currentArticles, null, 2));
         await uploadToGithub(DATA_FILE, indexContent, `编辑文章: ${title}`);
 
         showEditStatus('保存成功！', 'success');
-        renderArticles(currentArticles);
+        renderArticles(currentArticles, currentFilter);
 
         // 2秒后隐藏编辑面板
         setTimeout(() => {
@@ -246,32 +281,31 @@ async function handleEdit(e) {
     }
 }
 
-// 处理删除
+// 处理删除（采用“先删文件，再更新索引”的串行安全机制）
 async function handleDelete() {
-    const config = getConfig();
-    if (!config.token || !config.repo || deleteIndex < 0) return;
+    if (deleteIndex < 0 || !window.isAdmin || !window.isAdmin()) return;
 
     const article = currentArticles[deleteIndex];
 
     try {
-        // 从列表中移除
-        currentArticles.splice(deleteIndex, 1);
-
-        // 保存索引
-        const indexContent = btoa(unescape(encodeURIComponent(JSON.stringify(currentArticles, null, 2))));
-        await uploadToGithub(DATA_FILE, indexContent, `删除文章: ${article.title}`);
-
-        // 删除HTML文件（可选，注释掉则保留文件）
+        // 1. 先尝试删除 HTML 文件。如果删除失败，不继续更新索引，防止产生孤儿文件或信息不一致
         try {
             await deleteFromGithub(`archive/${article.filename}`, `删除文件: ${article.filename}`);
         } catch (e) {
-            console.log('删除文件失败，但索引已更新');
+            throw new Error('从 GitHub 删除 HTML 文件失败，索引未更新：' + e.message);
         }
+
+        // 2. 只有文件删除成功后，才从列表中移除该项
+        currentArticles.splice(deleteIndex, 1);
+
+        // 3. 上传更新后的索引
+        const indexContent = encodeBase64(JSON.stringify(currentArticles, null, 2));
+        await uploadToGithub(DATA_FILE, indexContent, `删除文章: ${article.title}`);
 
         // 关闭弹窗并刷新
         document.getElementById('deleteModal').classList.add('hidden');
         deleteIndex = -1;
-        renderArticles(currentArticles);
+        renderArticles(currentArticles, currentFilter);
     } catch (error) {
         console.error('删除失败:', error);
         alert('删除失败: ' + error.message);
@@ -281,9 +315,8 @@ async function handleDelete() {
 // 处理上传
 async function handleUpload(e) {
     e.preventDefault();
-    const config = getConfig();
-    if (!config.token || !config.repo) {
-        showUploadStatus('请先配置 GitHub Token 和仓库', 'error');
+    if (!window.isAdmin || !window.isAdmin()) {
+        showUploadStatus('请先登录管理员账号', 'error');
         return;
     }
 
@@ -291,134 +324,195 @@ async function handleUpload(e) {
     const title = document.getElementById('titleInput').value;
     const category = document.getElementById('categoryInput').value;
     const tags = document.getElementById('tagsInput').value.split(',').map(t => t.trim()).filter(Boolean);
+    const description = document.getElementById('descriptionInput').value;
 
     if (!file) {
         showUploadStatus('请选择文件', 'error');
         return;
     }
 
-    showUploadStatus('上传中...', 'success');
+    // 限制单文件 1MB (GitHub Contents API 推荐及常规限制)
+    if (file.size > 1 * 1024 * 1024) {
+        showUploadStatus('文件超过 1MB，请使用 git push 上传，网页上传最大支持 1MB', 'error');
+        return;
+    }
+
+    showUploadStatus('准备上传...', 'success');
+
+    // 显示进度条
+    const progressBar = document.getElementById('uploadProgress');
+    const progressFill = document.getElementById('progressFill');
+    const progressText = document.getElementById('progressText');
+    progressBar.classList.remove('hidden');
+    progressText.classList.remove('hidden');
+    progressFill.style.width = '0%';
+    progressText.textContent = '0%';
 
     try {
         // 读取文件
         const content = await readFileAsBase64(file);
         const filename = `${Date.now()}_${file.name}`;
 
-        // 上传HTML文件
-        await uploadToGithub(`archive/${filename}`, content, `添加归档: ${title}`);
+        // 使用 XMLHttpRequest 上传 HTML 文件以获取真实的上传进度
+        await new Promise((resolve, reject) => {
+            const body = JSON.stringify({ message: `添加归档: ${title}`, content });
+            const xhr = new XMLHttpRequest();
+            xhr.open('PUT', `${API_BASE}/archive/${filename}`);
+            if (window.adminToken) {
+                xhr.setRequestHeader('Authorization', `Bearer ${window.adminToken}`);
+            }
+            xhr.setRequestHeader('Content-Type', 'application/json');
 
-        // 更新索引
+            xhr.upload.addEventListener('progress', (ev) => {
+                if (ev.lengthComputable) {
+                    const pct = Math.round((ev.loaded / ev.total) * 100);
+                    progressFill.style.width = pct + '%';
+                    progressText.textContent = pct + '%';
+                }
+            });
+
+            xhr.onload = () => {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    resolve(JSON.parse(xhr.responseText));
+                } else {
+                    reject(new Error(`上传 HTML 错误（HTTP ${xhr.status}）`));
+                }
+            };
+            xhr.onerror = () => reject(new Error('网络错误，无法上传'));
+            xhr.send(body);
+        });
+
+        // HTML 上传成功后，更新索引数据结构
         currentArticles.unshift({
             title,
             filename,
             category,
             tags,
+            description,
             date: new Date().toISOString().split('T')[0]
         });
 
-        const indexContent = btoa(unescape(encodeURIComponent(JSON.stringify(currentArticles, null, 2))));
+        const indexContent = encodeBase64(JSON.stringify(currentArticles, null, 2));
         await uploadToGithub(DATA_FILE, indexContent, `更新索引: ${title}`);
 
         showUploadStatus('上传成功！', 'success');
         document.getElementById('uploadForm').reset();
-        renderArticles(currentArticles);
+        renderArticles(currentArticles, currentFilter);
 
-        // 2秒后隐藏上传面板
+        // 2秒后重置和隐藏上传面板
         setTimeout(() => {
             document.getElementById('uploadPanel').classList.add('hidden');
+            progressBar.classList.add('hidden');
+            progressText.classList.add('hidden');
         }, 2000);
     } catch (error) {
         console.error('上传失败:', error);
         showUploadStatus('上传失败: ' + error.message, 'error');
+        progressBar.classList.add('hidden');
+        progressText.classList.add('hidden');
     }
 }
 
-// 读取文件为Base64
+// 废弃 readAsBinaryString -> 安全读取为 ArrayBuffer，并编码为 Base64
 function readFileAsBase64(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = () => resolve(btoa(reader.result));
-        reader.onerror = reject;
-        reader.readAsBinaryString(file);
-    });
-}
-
-// 上传到GitHub
-async function uploadToGithub(path, content, message) {
-    const config = getConfig();
-
-    // 检查文件是否存在（获取SHA）
-    let sha = null;
-    try {
-        const response = await fetch(`https://api.github.com/repos/${config.repo}/contents/${path}`, {
-            headers: {
-                'Authorization': `token ${config.token}`,
-                'Accept': 'application/vnd.github.v3+json'
+        reader.onload = () => {
+            const bytes = new Uint8Array(reader.result);
+            let binary = '';
+            for (let i = 0; i < bytes.length; i++) {
+                binary += String.fromCharCode(bytes[i]);
             }
-        });
-        if (response.ok) {
-            const data = await response.json();
-            sha = data.sha;
-        }
-    } catch {}
-
-    const body = {
-        message,
-        content
-    };
-    if (sha) body.sha = sha;
-
-    const response = await fetch(`https://api.github.com/repos/${config.repo}/contents/${path}`, {
-        method: 'PUT',
-        headers: {
-            'Authorization': `token ${config.token}`,
-            'Accept': 'application/vnd.github.v3+json',
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(body)
+            resolve(btoa(binary));
+        };
+        reader.onerror = reject;
+        reader.readAsArrayBuffer(file);
     });
-
-    if (!response.ok) {
-        throw new Error('GitHub API 错误');
-    }
-
-    return response.json();
 }
 
-// 从GitHub删除文件
-async function deleteFromGithub(path, message) {
-    const config = getConfig();
-
-    // 获取文件SHA
-    const response = await fetch(`https://api.github.com/repos/${config.repo}/contents/${path}`, {
-        headers: {
-            'Authorization': `token ${config.token}`,
-            'Accept': 'application/vnd.github.v3+json'
-        }
-    });
-
-    if (!response.ok) {
-        throw new Error('文件不存在');
+// 上传至 GitHub Contents API (带 SHA 校验和自动防冲突重试)
+async function uploadToGithub(path, content, message, retries = 3) {
+    let apiPath = '';
+    if (path === DATA_FILE) {
+        apiPath = '/api/articles';
+    } else if (path.startsWith('archive/')) {
+        apiPath = '/api/archive/' + path.replace('archive/', '');
+    } else {
+        apiPath = '/api/' + path;
     }
 
-    const data = await response.json();
+    for (let attempt = 0; attempt <= retries; attempt++) {
+        // 尝试获取最新 SHA (只对 index.json，新上传的 HTML 文件不需要 SHA 且 GET 也会 404)
+        let sha = null;
+        if (apiPath === '/api/articles') {
+            try {
+                const response = await fetch(apiPath);
+                if (response.ok) {
+                    const data = await response.json();
+                    sha = data.sha;
+                }
+            } catch (err) {}
+        }
 
-    // 删除文件
-    const deleteResponse = await fetch(`https://api.github.com/repos/${config.repo}/contents/${path}`, {
+        const body = {
+            message,
+            content
+        };
+        if (sha) body.sha = sha;
+
+        const headers = {
+            'Content-Type': 'application/json'
+        };
+        if (window.adminToken) {
+            headers['Authorization'] = `Bearer ${window.adminToken}`;
+        }
+
+        const response = await fetch(apiPath, {
+            method: 'PUT',
+            headers,
+            body: JSON.stringify(body)
+        });
+
+        if (response.ok) {
+            return response.json();
+        }
+
+        // 409 Conflict 表示 SHA 在获取和 PUT 之间被其他操作修改，执行退避并重试
+        if (response.status === 409 && attempt < retries) {
+            await new Promise(resolve => setTimeout(resolve, 300 * (attempt + 1)));
+            continue;
+        }
+
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || `HTTP ${response.status}`);
+    }
+}
+
+// 从 GitHub 删除文件
+async function deleteFromGithub(path, message) {
+    const filename = path.replace('archive/', '');
+    
+    // 1. 获取要删除文件的最新 SHA (公开读)
+    const response = await fetch(`/api/articles/${filename}`);
+    if (!response.ok) {
+        throw new Error('获取文件信息失败，文件可能不存在');
+    }
+    const fileData = await response.json();
+    const sha = fileData.sha;
+
+    // 2. 发送带有 SHA 的鉴权删除请求
+    const deleteResponse = await fetch(`/api/archive/${filename}`, {
         method: 'DELETE',
         headers: {
-            'Authorization': `token ${config.token}`,
-            'Accept': 'application/vnd.github.v3+json',
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${window.adminToken}`
         },
-        body: JSON.stringify({
-            message,
-            sha: data.sha
-        })
+        body: JSON.stringify({ message, sha })
     });
 
     if (!deleteResponse.ok) {
-        throw new Error('删除失败');
+        const err = await deleteResponse.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${deleteResponse.status}`);
     }
 
     return deleteResponse.json();
@@ -438,9 +532,9 @@ function showEditStatus(message, type) {
     status.className = `status ${type}`;
 }
 
-// HTML转义
+// HTML 转义
 function escapeHtml(text) {
     const div = document.createElement('div');
-    div.textContent = text;
+    div.textContent = text || '';
     return div.innerHTML;
 }

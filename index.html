@@ -3,122 +3,200 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>网页归档站</title>
+    <title>网页归档站 - 个人数字保险箱</title>
+    <!-- 引入 Inter/Noto Sans SC 字体提升视觉高级感 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <!-- 顶部导航 -->
-    <header>
-        <div class="container">
-            <h1 class="logo">📚 网页归档站</h1>
-            <nav>
+    <header class="blog-header">
+        <div class="container header-container">
+            <div class="brand">
+                <span class="brand-emoji">📚</span>
+                <div class="brand-text">
+                    <h1 class="logo">网页归档站</h1>
+                    <span class="sub-logo">Digital Archive & Scripts</span>
+                </div>
+            </div>
+            
+            <nav class="blog-nav">
                 <a href="#" class="active" data-category="all">🏠 首页</a>
                 <a href="#" data-category="tech">💻 科技脚本</a>
                 <a href="#" data-category="knowledge">📚 知识储备</a>
                 <a href="#" data-category="backup">📁 日常备份</a>
             </nav>
-            <button id="uploadBtn" class="upload-btn">➕ 上传文件</button>
+
+            <div class="header-actions">
+                <div class="search-box">
+                    <input type="text" id="searchInput" placeholder="🔍 搜索标题、标签或描述...">
+                </div>
+                <button id="uploadBtn" class="upload-btn">
+                    <span class="btn-icon">➕</span>上传归档
+                </button>
+            </div>
         </div>
     </header>
 
+    <!-- 欢迎及引导横幅 -->
+    <section class="hero-section">
+        <div class="container hero-container">
+            <h2>静态网页与知识脚本的数字保险箱</h2>
+            <p>基于 GitHub Pages 构建的轻量级、无服务器化个人知识归档与备份空间。</p>
+        </div>
+    </section>
+
     <!-- 主内容区 -->
-    <main class="container">
+    <main class="container main-content">
+        <!-- 过滤器和排序控制栏 -->
+        <div class="control-panel">
+            <div class="control-info">
+                <span class="control-title">已归档文章</span>
+                <span class="control-subtitle">随时随地查阅您的 SingleFile 离线备份</span>
+            </div>
+            <div class="sort-bar">
+                <span class="sort-label">排序方式:</span>
+                <button class="sort-btn active" data-sort="newest">📅 最新添加</button>
+                <button class="sort-btn" data-sort="oldest">⏳ 最早历史</button>
+                <button class="sort-btn" data-sort="title">🔤 标题首字母</button>
+            </div>
+        </div>
+
         <!-- 上传面板（默认隐藏） -->
         <div id="uploadPanel" class="upload-panel hidden">
-            <h2>上传 SingleFile HTML</h2>
+            <div class="panel-header">
+                <h3>📤 上传新归档 HTML</h3>
+                <p>网页归档推荐使用 SingleFile 扩展保存为单个 HTML 格式</p>
+            </div>
             <form id="uploadForm">
-                <div class="form-group">
-                    <label>选择文件</label>
-                    <input type="file" id="fileInput" accept=".html" required>
+                <div class="form-grid">
+                    <div class="form-group full-width">
+                        <label for="fileInput">选择 SingleFile 离线 HTML</label>
+                        <div class="file-drop-area">
+                            <input type="file" id="fileInput" accept=".html" required>
+                            <span class="file-dummy-text">点击或拖拽 HTML 文件到此区域</span>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="titleInput">归档标题</label>
+                        <input type="text" id="titleInput" placeholder="默认自动读取 HTML 文件名" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="categoryInput">归档分类</label>
+                        <select id="categoryInput">
+                            <option value="tech">💻 科技脚本</option>
+                            <option value="knowledge">📚 知识储备</option>
+                            <option value="backup">📁 日常备份</option>
+                        </select>
+                    </div>
+                    <div class="form-group full-width">
+                        <label for="descriptionInput">文章描述/摘要</label>
+                        <input type="text" id="descriptionInput" placeholder="请输入简短的摘要介绍，便于后续检索">
+                    </div>
+                    <div class="form-group full-width">
+                        <label for="tagsInput">相关标签（逗号分隔）</label>
+                        <input type="text" id="tagsInput" placeholder="例如：Python, 效率工具, 机器学习">
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label>文章标题</label>
-                    <input type="text" id="titleInput" placeholder="自动从文件名读取" required>
+                <div class="panel-actions">
+                    <button type="submit" class="submit-btn">确认上传</button>
+                    <button type="button" id="cancelUpload" class="cancel-btn">取消</button>
                 </div>
-                <div class="form-group">
-                    <label>分类</label>
-                    <select id="categoryInput">
-                        <option value="tech">💻 科技脚本</option>
-                        <option value="knowledge">📚 知识储备</option>
-                        <option value="backup">📁 日常备份</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>标签（逗号分隔）</label>
-                    <input type="text" id="tagsInput" placeholder="如：Python, 教程, 工具">
-                </div>
-                <button type="submit" class="submit-btn">上传</button>
-                <button type="button" id="cancelUpload" class="cancel-btn">取消</button>
             </form>
+            <div class="progress-bar hidden" id="uploadProgress">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <span class="progress-text hidden" id="progressText"></span>
             <div id="uploadStatus" class="status"></div>
         </div>
 
         <!-- 编辑面板（默认隐藏） -->
         <div id="editPanel" class="upload-panel hidden">
-            <h2>编辑文章信息</h2>
+            <div class="panel-header">
+                <h3>✏️ 编辑归档信息</h3>
+                <p>修改现有归档文件的属性、描述与标签信息</p>
+            </div>
             <form id="editForm">
                 <input type="hidden" id="editIndex">
                 <input type="hidden" id="editFilename">
-                <div class="form-group">
-                    <label>文章标题</label>
-                    <input type="text" id="editTitle" required>
+                <div class="form-grid">
+                    <div class="form-group full-width">
+                        <label for="editTitle">归档标题</label>
+                        <input type="text" id="editTitle" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="editCategory">归档分类</label>
+                        <select id="editCategory">
+                            <option value="tech">💻 科技脚本</option>
+                            <option value="knowledge">📚 知识储备</option>
+                            <option value="backup">📁 日常备份</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="editTags">标签（逗号分隔）</label>
+                        <input type="text" id="editTags" placeholder="例如：Docker, 后端, 教程">
+                    </div>
+                    <div class="form-group full-width">
+                        <label for="editDescription">文章描述/摘要</label>
+                        <input type="text" id="editDescription" placeholder="修改描述摘要信息...">
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label>分类</label>
-                    <select id="editCategory">
-                        <option value="tech">💻 科技脚本</option>
-                        <option value="knowledge">📚 知识储备</option>
-                        <option value="backup">📁 日常备份</option>
-                    </select>
+                <div class="panel-actions">
+                    <button type="submit" class="submit-btn">保存修改</button>
+                    <button type="button" id="cancelEdit" class="cancel-btn">取消</button>
                 </div>
-                <div class="form-group">
-                    <label>标签（逗号分隔）</label>
-                    <input type="text" id="editTags" placeholder="如：Python, 教程, 工具">
-                </div>
-                <button type="submit" class="submit-btn">保存修改</button>
-                <button type="button" id="cancelEdit" class="cancel-btn">取消</button>
             </form>
             <div id="editStatus" class="status"></div>
         </div>
 
         <!-- 文章列表 -->
         <section id="articles" class="articles-grid">
-            <!-- 动态生成 -->
+            <!-- 由 app.js 动态生成 -->
         </section>
     </main>
 
-    <!-- 配置面板 -->
-    <div id="configModal" class="modal hidden">
-        <div class="modal-content">
-            <h2>⚙️ 配置</h2>
-            <div class="form-group">
-                <label>GitHub Token</label>
-                <input type="password" id="githubToken" placeholder="ghp_xxxx">
-            </div>
-            <div class="form-group">
-                <label>GitHub 仓库 (用户名/仓库名)</label>
-                <input type="text" id="githubRepo" placeholder="username/html-archive">
-            </div>
-            <button id="saveConfig" class="submit-btn">保存</button>
-            <button id="closeConfig" class="cancel-btn">取消</button>
-        </div>
-    </div>
-
     <!-- 删除确认弹窗 -->
     <div id="deleteModal" class="modal hidden">
-        <div class="modal-content">
-            <h2>⚠️ 确认删除</h2>
-            <p id="deleteMessage">确定要删除这篇文章吗？此操作不可撤销。</p>
-            <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: center;">
-                <button id="confirmDelete" class="submit-btn" style="background: #e74c3c;">确认删除</button>
-                <button id="cancelDelete" class="cancel-btn">取消</button>
+        <div class="modal-content text-center">
+            <div class="alert-icon">⚠️</div>
+            <h2>确认删除归档？</h2>
+            <p id="deleteMessage" class="delete-warning">您确定要删除这篇文章吗？此操作将同时从 GitHub 仓库物理删除对应的 HTML 文件，无法恢复。</p>
+            <div class="modal-actions-grid">
+                <button id="confirmDelete" class="submit-btn btn-danger">确认永久删除</button>
+                <button id="cancelDelete" class="cancel-btn">暂不删除</button>
             </div>
         </div>
     </div>
 
-    <!-- 配置按钮 -->
-    <button id="configBtn" class="config-fab">⚙️</button>
+    <!-- 管理登录按钮 -->
+    <button id="adminLoginBtn" class="config-fab" title="管理员登录">🔒</button>
+
+    <!-- 管理员密码弹窗 -->
+    <div id="adminModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>🔐 管理员登录</h3>
+                <button id="closeAdmin" class="modal-close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="adminPassword">请输入管理密码</label>
+                    <input type="password" id="adminPassword" placeholder="密码..." autocomplete="current-password">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="confirmLogin" class="submit-btn">登录</button>
+            </div>
+            <div id="adminStatus" class="status"></div>
+        </div>
+    </div>
+
+    <!-- 退出按钮（登录后显示） -->
+    <button id="adminLogoutBtn" class="config-fab hidden" title="退出管理" style="background: #ef4444; bottom: 100px;">🚪</button>
 
     <script src="app.js"></script>
+    <script src="admin.js"></script>
 </body>
 </html>
