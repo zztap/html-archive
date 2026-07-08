@@ -82,14 +82,47 @@ function setupEventListeners() {
     // 编辑表单
     document.getElementById('editForm').addEventListener('submit', handleEdit);
 
-    // 文件选择自动填充标题
+    // 文件选择自动填充标题和更新拖拽区文字
     document.getElementById('fileInput').addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (file) {
             const name = file.name.replace('.html', '');
             document.getElementById('titleInput').value = name;
+            // 更新拖拽区文字
+            const dummy = document.querySelector('.file-dummy-text');
+            if (dummy) dummy.textContent = `已选择: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
         }
     });
+
+    // 拖拽上传支持
+    const dropArea = document.querySelector('.file-drop-area');
+    if (dropArea) {
+        ['dragenter', 'dragover'].forEach(evt => {
+            dropArea.addEventListener(evt, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                dropArea.style.borderColor = 'var(--primary)';
+                dropArea.style.background = 'var(--primary-light)';
+            });
+        });
+        ['dragleave', 'drop'].forEach(evt => {
+            dropArea.addEventListener(evt, (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                dropArea.style.borderColor = '';
+                dropArea.style.background = '';
+            });
+        });
+        dropArea.addEventListener('drop', (e) => {
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                document.getElementById('fileInput').files = files;
+                // 触发 change 事件
+                const evt = new Event('change', { bubbles: true });
+                document.getElementById('fileInput').dispatchEvent(evt);
+            }
+        });
+    }
 
     // 搜索事件
     document.getElementById('searchInput').addEventListener('input', (e) => {
@@ -397,6 +430,9 @@ async function handleUpload(e) {
 
         showUploadStatus('上传成功！', 'success');
         document.getElementById('uploadForm').reset();
+        // 重置文件拖拽区文字
+        const dummy = document.querySelector('.file-dummy-text');
+        if (dummy) dummy.textContent = '点击或拖拽 HTML 文件到此区域';
         renderArticles(currentArticles, currentFilter);
 
         // 2秒后重置和隐藏上传面板
