@@ -298,27 +298,6 @@ export async function onRequest(context) {
         return json({ ok: true });
     }
 
-    // GET /go/:shortcode — 短链重定向到归档文件
-    if (method === 'GET' && path.startsWith('/go/')) {
-        const shortcode = path.replace('/go/', '');
-        const { status, data } = await githubRequest(env, 'data/index.json');
-        if (status !== 200) return json({ error: '未找到' }, 404);
-
-        try {
-            const content = decodeBase64(data.content);
-            const articles = JSON.parse(content);
-            const article = articles.find(a => a.shortcode === shortcode);
-            if (!article) return json({ error: '未找到该文章' }, 404);
-
-            return new Response(null, {
-                status: 302,
-                headers: { 'Location': `/archive/${article.filename}` }
-            });
-        } catch (e) {
-            return json({ error: '解析索引失败' }, 500);
-        }
-    }
-
     // 未匹配路由
     return json({ error: 'Not Found' }, 404);
 }
