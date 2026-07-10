@@ -380,7 +380,7 @@ async function handleUpload(e) {
     try {
         // 读取文件
         const content = await readFileAsBase64(file);
-        const filename = `${Date.now()}_${file.name}`;
+        const filename = `${Date.now()}.html`;
 
         // 使用 XMLHttpRequest 上传 HTML 文件以获取真实的上传进度
         await new Promise((resolve, reject) => {
