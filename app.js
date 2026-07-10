@@ -230,7 +230,7 @@ function renderArticles(articles, filter = 'all') {
                 </div>
                 <div class="card-footer">
                     <div class="actions">
-                        <a href="${article.shortcode ? `go/${article.shortcode}` : `archive/${article.filename}`}" target="_blank" class="view-btn">查看</a>
+                        <a href="${article.shortcode ? `/go/${article.shortcode}` : `/archive/${article.filename}`}" target="_blank" class="view-btn">查看</a>
                         ${window.isAdmin && window.isAdmin() ? `
                             <button class="edit-btn" onclick="openEdit(${originalIndex})">编辑</button>
                             <button class="delete-btn" onclick="openDelete(${originalIndex})">删除</button>
