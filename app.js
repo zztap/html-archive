@@ -230,7 +230,7 @@ function renderArticles(articles, filter = 'all') {
                 </div>
                 <div class="card-footer">
                     <div class="actions">
-                        <a href="archive/${article.filename}" target="_blank" class="view-btn">查看</a>
+                        <a href="${article.shortcode ? `go/${article.shortcode}` : `archive/${article.filename}`}" target="_blank" class="view-btn">查看</a>
                         ${window.isAdmin && window.isAdmin() ? `
                             <button class="edit-btn" onclick="openEdit(${originalIndex})">编辑</button>
                             <button class="delete-btn" onclick="openDelete(${originalIndex})">删除</button>
@@ -380,7 +380,19 @@ async function handleUpload(e) {
     try {
         // 读取文件
         const content = await readFileAsBase64(file);
-        const filename = `${Date.now()}.html`;
+        const filename = `${Date.now()}_${file.name}`;
+
+        // 生成短码：分类前缀 + YYMMDD + 当日序号
+        const now = new Date();
+        const yymmdd = String(now.getFullYear()).slice(2) +
+            String(now.getMonth() + 1).padStart(2, '0') +
+            String(now.getDate()).padStart(2, '0');
+        const PREFIX = { tech: 'KJ', knowledge: 'ZS', backup: 'RB' };
+        const prefix = PREFIX[category] || 'QT';
+        const todayCount = currentArticles.filter(a =>
+            a.shortcode && a.shortcode.startsWith(prefix + '-' + yymmdd)
+        ).length + 1;
+        const shortcode = `${prefix}-${yymmdd}${String(todayCount).padStart(2, '0')}`;
 
         // 使用 XMLHttpRequest 上传 HTML 文件以获取真实的上传进度
         await new Promise((resolve, reject) => {
@@ -428,7 +440,8 @@ async function handleUpload(e) {
             category,
             tags,
             description,
-            date: new Date().toISOString().split('T')[0]
+            date: new Date().toISOString().split('T')[0],
+            shortcode
         });
 
         const indexContent = encodeBase64(JSON.stringify(currentArticles, null, 2));
