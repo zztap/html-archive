@@ -1016,24 +1016,50 @@ body {
 }
 
 
-.load-more-wrap {
+.pager-wrap {
     display: flex;
+    flex-wrap: wrap;
     justify-content: center;
-    padding: 8px 0 40px;
+    align-items: center;
+    gap: 6px;
+    padding: 16px 0 36px;
 }
-.load-more-wrap.hidden { display: none; }
-.load-more-btn {
-    background: var(--primary, #3b82f6);
-    color: #fff;
-    border: none;
-    border-radius: 10px;
-    padding: 10px 22px;
-    font-size: 14px;
+.pager-wrap.hidden { display: none; }
+.pager-btn {
+    min-width: 36px;
+    height: 36px;
+    padding: 0 10px;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--text-main);
+    border-radius: 8px;
+    font-size: 13px;
     font-weight: 600;
     cursor: pointer;
-    box-shadow: 0 4px 14px rgba(59, 130, 246, 0.25);
+    transition: var(--transition);
 }
-.load-more-btn:hover { filter: brightness(1.05); }
+.pager-btn:hover:not(:disabled):not(.active) {
+    border-color: #c7d2fe;
+    color: var(--primary);
+    background: var(--primary-light);
+}
+.pager-btn.active {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #fff;
+}
+.pager-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+.pager-ellipsis {
+    padding: 0 4px;
+    color: var(--text-muted);
+    font-weight: 700;
+}
+.pager-nav {
+    min-width: auto;
+}
 
 /* ==========================================================================
    站点壳层 + 右侧栏
