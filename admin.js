@@ -21,14 +21,17 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function updateUI() {
+    const healthBtn = document.getElementById('healthCheckBtn');
     if (window.isAdmin()) {
         document.getElementById('uploadBtn').style.display = 'inline-flex';
         adminLoginBtn.classList.add('hidden');
         adminLogoutBtn.classList.remove('hidden');
+        if (healthBtn) healthBtn.classList.remove('hidden');
     } else {
         document.getElementById('uploadBtn').style.display = 'none';
         adminLoginBtn.classList.remove('hidden');
         adminLogoutBtn.classList.add('hidden');
+        if (healthBtn) healthBtn.classList.add('hidden');
     }
 }
 
@@ -138,3 +141,28 @@ function showToast(message) {
     document.body.appendChild(toast);
     setTimeout(() => toast.remove(), 2200);
 }
+
+
+// 需要管理员时：已登录则直接回调，否则弹登录框，登录成功后再执行回调
+window.requireAdmin = function(callback) {
+    if (window.isAdmin()) {
+        if (typeof callback === 'function') callback();
+        return;
+    }
+    const run = () => {
+        if (typeof callback === 'function') callback();
+    };
+    // 临时挂钩：登录成功后执行一次
+    const prevToken = window.adminToken;
+    adminModal.classList.remove('hidden');
+    adminPasswordInput.focus();
+    const observer = setInterval(() => {
+        if (window.adminToken && window.adminToken !== prevToken) {
+            clearInterval(observer);
+            run();
+        }
+        if (adminModal.classList.contains('hidden') && !window.isAdmin()) {
+            clearInterval(observer);
+        }
+    }, 200);
+};

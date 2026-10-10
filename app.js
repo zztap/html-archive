@@ -194,32 +194,51 @@ async function loadArticles() {
 // 渲染文章列表
 function renderArticles(articles, filter = 'all') {
     const grid = document.getElementById('articles');
-    
-    // 1. 过滤
+    const countEl = document.getElementById('resultCount');
+    const searchKeyword = (document.getElementById('searchInput')?.value || '').trim();
+
+    // 1. 过滤（articles 可能是搜索子集；编辑索引永远相对 currentArticles）
     let list = filter === 'all' ? [...articles] : articles.filter(a => a.category === filter);
 
     // 2. 排序
     if (currentSort === 'oldest') {
-        list.reverse(); // 原本 newest 在最前，reverse 变成 oldest 在前
+        list = [...list].reverse();
     } else if (currentSort === 'title') {
-        list.sort((a, b) => a.title.localeCompare(b.title, 'zh-CN'));
+        list = [...list].sort((a, b) => a.title.localeCompare(b.title, 'zh-CN'));
+    } else {
+        // newest：保持传入顺序（currentArticles 已是新→旧）
+        list = [...list];
+    }
+
+    if (countEl) {
+        countEl.textContent = `共 ${list.length} 篇`;
     }
 
     if (list.length === 0) {
-        grid.innerHTML = '<p style="text-align:center; color:#666; padding:40px;">暂无文章</p>';
+        let emptyMsg = '暂无文章';
+        if (searchKeyword) {
+            emptyMsg = `没有找到与「${escapeHtml(searchKeyword)}」匹配的归档`;
+        } else if (filter !== 'all') {
+            emptyMsg = `「${CATEGORIES[filter] || filter}」分类下暂无文章`;
+        }
+        grid.innerHTML = `<p style="text-align:center; color:#666; padding:40px;">${emptyMsg}</p>`;
         return;
     }
 
     grid.innerHTML = list.map((article) => {
-        // 找到在原始数组中的对应索引，保证编辑/删除操作的目标准确
-        const originalIndex = articles.indexOf(article);
+        // 始终用全局索引，避免搜索/筛选后编辑删错条目
+        const originalIndex = currentArticles.indexOf(article);
+        const viewHref = article.shortcode
+            ? `/go/${encodeURIComponent(article.shortcode)}`
+            : `/archive/${encodeURIComponent(article.filename)}`;
         return `
             <div class="article-card">
                 <div class="card-header">
-                    <h3>${escapeHtml(article.title)}</h3>
+                    <h3><a href="${viewHref}" target="_blank" class="card-title-link">${escapeHtml(article.title)}</a></h3>
                     <div class="meta">
                         <span class="category-tag ${article.category}">${CATEGORIES[article.category] || article.category}</span>
                         <span class="date">${article.date}</span>
+                        ${article.shortcode ? `<span class="shortcode-chip" title="短码">${escapeHtml(article.shortcode)}</span>` : ''}
                     </div>
                     ${article.description ? `<p class="card-desc">${escapeHtml(article.description)}</p>` : ''}
                     ${article.tags && article.tags.length > 0 ? `
@@ -230,8 +249,9 @@ function renderArticles(articles, filter = 'all') {
                 </div>
                 <div class="card-footer">
                     <div class="actions">
-                        <a href="${article.shortcode ? `/go/${article.shortcode}` : `/archive/${article.filename}`}" target="_blank" class="view-btn">查看</a>
-                        ${window.isAdmin && window.isAdmin() ? `
+                        <a href="${viewHref}" target="_blank" class="view-btn">查看</a>
+                        ${article.shortcode ? `<button type="button" class="copy-btn" onclick="copyShortLink('${escapeHtml(article.shortcode)}')">复制短链</button>` : ''}
+                        ${window.isAdmin && window.isAdmin() && originalIndex >= 0 ? `
                             <button class="edit-btn" onclick="openEdit(${originalIndex})">编辑</button>
                             <button class="delete-btn" onclick="openDelete(${originalIndex})">删除</button>
                         ` : ''}
@@ -240,6 +260,54 @@ function renderArticles(articles, filter = 'all') {
             </div>
         `;
     }).join('');
+}
+
+async function copyShortLink(shortcode) {
+    const url = `${location.origin}/go/${shortcode}`;
+    try {
+        await navigator.clipboard.writeText(url);
+        if (typeof showToast === 'function') showToast('已复制短链');
+        else alert('已复制: ' + url);
+    } catch (e) {
+        prompt('复制短链：', url);
+    }
+}
+
+async function runHealthCheck() {
+    if (!window.isAdmin || !window.isAdmin()) {
+        if (typeof window.requireAdmin === 'function') {
+            window.requireAdmin(() => runHealthCheck());
+        }
+        return;
+    }
+    try {
+        const res = await fetch(`${API_BASE}/health`, {
+            headers: { 'Authorization': `Bearer ${window.adminToken}` }
+        });
+        if (res.status === 401) {
+            window.adminToken = null;
+            if (typeof window.requireAdmin === 'function') {
+                window.requireAdmin(() => runHealthCheck());
+            }
+            return;
+        }
+        const data = await res.json();
+        if (!res.ok) {
+            alert('健康检查失败: ' + (data.error || res.status));
+            return;
+        }
+        const lines = [
+            data.ok ? '✅ 索引与文件一致' : '⚠️ 发现不一致',
+            `索引条目: ${data.articleCount}`,
+            `archive 文件: ${data.archiveCount}`,
+            data.missingFiles?.length ? `索引有、文件缺失:\n- ${data.missingFiles.join('\n- ')}` : '无缺失文件',
+            data.orphanFiles?.length ? `文件有、索引缺失:\n- ${data.orphanFiles.join('\n- ')}` : '无孤儿文件',
+            data.duplicateShortcodes?.length ? `重复短码: ${data.duplicateShortcodes.join(', ')}` : '短码无重复'
+        ];
+        alert(lines.join('\n'));
+    } catch (e) {
+        alert('健康检查出错: ' + e.message);
+    }
 }
 
 // 打开编辑面板
@@ -382,17 +450,23 @@ async function handleUpload(e) {
         const content = await readFileAsBase64(file);
         const filename = `${Date.now()}_${file.name}`;
 
-        // 生成短码：分类前缀 + YYMMDD + 当日序号
+        // 生成短码：分类前缀 + YYMMDD + 当日序号（确保全局唯一）
         const now = new Date();
         const yymmdd = String(now.getFullYear()).slice(2) +
             String(now.getMonth() + 1).padStart(2, '0') +
             String(now.getDate()).padStart(2, '0');
         const PREFIX = { tech: 'KJ', knowledge: 'ZS', backup: 'RB' };
         const prefix = PREFIX[category] || 'QT';
-        const todayCount = currentArticles.filter(a =>
+        const used = new Set(currentArticles.map(a => a.shortcode).filter(Boolean));
+        let seq = currentArticles.filter(a =>
             a.shortcode && a.shortcode.startsWith(prefix + '-' + yymmdd)
         ).length + 1;
-        const shortcode = `${prefix}-${yymmdd}${String(todayCount).padStart(2, '0')}`;
+        let shortcode = `${prefix}-${yymmdd}${String(seq).padStart(2, '0')}`;
+        while (used.has(shortcode)) {
+            seq += 1;
+            shortcode = `${prefix}-${yymmdd}${String(seq).padStart(2, '0')}`;
+            if (seq > 99) throw new Error('今日短码已用尽，请稍后再试');
+        }
 
         // 使用 XMLHttpRequest 上传 HTML 文件以获取真实的上传进度
         await new Promise((resolve, reject) => {
@@ -604,3 +678,5 @@ function escapeHtml(text) {
     div.textContent = text || '';
     return div.innerHTML;
 }
+window.copyShortLink = copyShortLink;
+window.runHealthCheck = runHealthCheck;

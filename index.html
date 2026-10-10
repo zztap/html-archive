@@ -53,7 +53,7 @@
     <section class="hero-section">
         <div class="container hero-container">
             <h2>静态网页与知识脚本的数字保险箱</h2>
-            <p>基于 GitHub Pages + Cloudflare Pages 构建的轻量级、无服务器化个人知识归档与备份空间。</p>
+            <p>基于 GitHub 存储 + Cloudflare Pages 托管的轻量级个人知识归档与备份空间。</p>
         </div>
     </section>
 
@@ -62,8 +62,9 @@
         <!-- 过滤器和排序控制栏 -->
         <div class="control-panel">
             <div class="control-info">
-                <span class="control-title">已归档文章</span>
+                <span class="control-title">已归档文章 <span id="resultCount" class="result-count"></span></span>
                 <span class="control-subtitle">随时随地查阅您的 SingleFile 离线备份</span>
+                <button type="button" id="healthCheckBtn" class="health-btn hidden" onclick="runHealthCheck()">🩺 健康检查</button>
             </div>
             <div class="sort-bar">
                 <span class="sort-label">排序方式:</span>
