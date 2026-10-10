@@ -19,6 +19,8 @@
 - [x] UI：Hero 加厚视觉；主列排序与侧栏顶对齐；侧栏取消内部滚动条
 - [x] 布局：内容居中不贯通；侧栏改右侧；备份热力图 16 周无横滚；时间归档
 
+- [x] 站点 favicon（vault SVG + ico / apple-touch）
+
 ## 待办 / 已知限制
 
 - [ ] Session 持久化（需在 Cloudflare 控制台绑定 KV / Durable Object，代码侧暂不实现；实例回收后需重新登录属预期行为）
