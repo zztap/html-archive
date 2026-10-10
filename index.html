@@ -57,8 +57,61 @@
         </div>
     </section>
 
-    <!-- 主内容区 -->
-    <main class="container main-content">
+    <!-- 侧栏开关（移动端；不改顶栏） -->
+    <button type="button" id="sidebarToggle" class="sidebar-toggle" aria-expanded="false" aria-controls="siteSidebar">☰ 侧栏</button>
+    <div id="sidebarBackdrop" class="sidebar-backdrop hidden" aria-hidden="true"></div>
+
+    <!-- 主内容区：左侧栏 + 右侧列表 -->
+    <div class="page-layout container">
+    <aside id="siteSidebar" class="site-sidebar" aria-label="站点侧栏">
+        <div class="sidebar-inner">
+            <section class="sidebar-card profile-card" id="profileCard">
+                <div class="profile-loading">加载名片…</div>
+            </section>
+
+            <section class="sidebar-card stats-card" id="statsCard">
+                <div class="stats-row">
+                    <div class="stat-item">
+                        <span class="stat-num" id="statTotal">0</span>
+                        <span class="stat-label">全部</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-num" id="statMonth">0</span>
+                        <span class="stat-label">本月新增</span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="sidebar-card">
+                <h3 class="sidebar-title">贡献热力图</h3>
+                <div id="heatmap" class="heatmap" title="按归档日期统计"></div>
+                <div class="heatmap-legend">
+                    <span>少</span>
+                    <span class="hm-l0"></span><span class="hm-l1"></span><span class="hm-l2"></span><span class="hm-l3"></span><span class="hm-l4"></span>
+                    <span>多</span>
+                </div>
+            </section>
+
+            <section class="sidebar-card">
+                <h3 class="sidebar-title">分类</h3>
+                <ul class="sidebar-cats" id="sidebarCats">
+                    <!-- filled by JS -->
+                </ul>
+            </section>
+
+            <section class="sidebar-card">
+                <div class="sidebar-title-row">
+                    <h3 class="sidebar-title">近期阅读</h3>
+                    <button type="button" id="clearRecentBtn" class="linkish-btn">清空</button>
+                </div>
+                <ul class="recent-list" id="recentList">
+                    <li class="recent-empty">暂无记录</li>
+                </ul>
+            </section>
+        </div>
+    </aside>
+
+    <main class="main-content">
         <!-- 过滤器和排序控制栏 -->
         <div class="control-panel">
             <div class="control-info">
@@ -177,6 +230,7 @@
             <button type="button" id="loadMoreBtn" class="load-more-btn">加载更多</button>
         </div>
     </main>
+    </div><!-- /.page-layout -->
 
     <!-- 删除确认弹窗 -->
     <div id="deleteModal" class="modal hidden">
@@ -211,6 +265,7 @@
         </div>
     </div>
 
+    <script src="sidebar.js"></script>
     <script src="app.js"></script>
     <script src="admin.js"></script>
 </body>
