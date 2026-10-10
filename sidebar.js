@@ -322,6 +322,17 @@ function setupSidebarChrome() {
         });
     }
 
+    const heroToggle = document.getElementById('heroToggle');
+    const heroExtra = document.getElementById('heroExtra');
+    if (heroToggle && heroExtra) {
+        heroToggle.addEventListener('click', () => {
+            heroExtra.classList.toggle('hidden');
+            const open = !heroExtra.classList.contains('hidden');
+            heroToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+            heroToggle.textContent = open ? '收起' : '详情';
+        });
+    }
+
     // 窄屏点分类后自动收起
     document.getElementById('sidebarCats')?.addEventListener('click', (e) => {
         if (e.target.closest('.sidebar-cat') && window.matchMedia('(max-width: 960px)').matches) {
