@@ -5,6 +5,39 @@
 const sessions = new Map();
 const SESSION_TTL = 24 * 60 * 60 * 1000; // 24 小时
 
+// ====== 登录失败限速（按 IP，内存） ======
+const loginFails = new Map(); // ip -> { count, until }
+const LOGIN_MAX_FAILS = 5;
+const LOGIN_COOLDOWN_MS = 5 * 60 * 1000;
+
+function clientIp(request) {
+    return request.headers.get('CF-Connecting-IP')
+        || request.headers.get('X-Forwarded-For')?.split(',')[0]?.trim()
+        || 'unknown';
+}
+
+function loginBlocked(ip) {
+    const rec = loginFails.get(ip);
+    if (!rec) return false;
+    if (Date.now() < rec.until) return true;
+    loginFails.delete(ip);
+    return false;
+}
+
+function recordLoginFail(ip) {
+    const rec = loginFails.get(ip) || { count: 0, until: 0 };
+    rec.count += 1;
+    if (rec.count >= LOGIN_MAX_FAILS) {
+        rec.until = Date.now() + LOGIN_COOLDOWN_MS;
+        rec.count = 0;
+    }
+    loginFails.set(ip, rec);
+}
+
+function clearLoginFails(ip) {
+    loginFails.delete(ip);
+}
+
 function cleanSessions() {
     const now = Date.now();
     for (const [token, expiry] of sessions) {
@@ -41,6 +74,28 @@ function getEnv(env) {
     };
 }
 
+// ====== CORS：仅本站 + 本地开发 ======
+const ALLOWED_ORIGINS = new Set([
+    'https://html-archive.pages.dev',
+    'http://localhost:8000',
+    'http://localhost:8788',
+    'http://127.0.0.1:8000',
+    'http://127.0.0.1:8788'
+]);
+
+function corsHeadersFor(request) {
+    const origin = request.headers.get('Origin') || '';
+    const headers = {
+        'Access-Control-Allow-Methods': 'GET, PUT, POST, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Vary': 'Origin'
+    };
+    if (ALLOWED_ORIGINS.has(origin)) {
+        headers['Access-Control-Allow-Origin'] = origin;
+    }
+    return headers;
+}
+
 
 // ====== GitHub Contents API 代理（读/删，≤1MB 写） ======
 async function githubRequest(env, apiPath, options = {}) {
@@ -59,7 +114,7 @@ async function githubRequest(env, apiPath, options = {}) {
         headers,
         body: options.body
     });
-    
+
     let data;
     try {
         data = await res.json();
@@ -100,7 +155,6 @@ async function uploadLargeFile(env, filePath, content, message, retries = 3) {
 
     for (let attempt = 0; attempt <= retries; attempt++) {
         try {
-            // 1. 创建 blob（把 base64 内容存到 Git 对象存储）
             const blobRes = await fetch(`${baseUrl}/git/blobs`, {
                 method: 'POST', headers,
                 body: JSON.stringify({ content, encoding: 'base64' })
@@ -111,7 +165,6 @@ async function uploadLargeFile(env, filePath, content, message, retries = 3) {
             }
             const blobData = await blobRes.json();
 
-            // 2. 获取最新 commit SHA
             const refRes = await fetch(`${baseUrl}/git/refs/heads/main`, { headers });
             if (!refRes.ok) {
                 return { status: refRes.status, data: { error: '获取分支引用失败' } };
@@ -119,7 +172,6 @@ async function uploadLargeFile(env, filePath, content, message, retries = 3) {
             const refData = await refRes.json();
             const parentSha = refData.object.sha;
 
-            // 3. 获取当前 commit 的 tree SHA
             const commitRes = await fetch(`${baseUrl}/git/commits/${parentSha}`, { headers });
             if (!commitRes.ok) {
                 return { status: commitRes.status, data: { error: '获取 commit 信息失败' } };
@@ -127,7 +179,6 @@ async function uploadLargeFile(env, filePath, content, message, retries = 3) {
             const commitData = await commitRes.json();
             const baseTreeSha = commitData.tree.sha;
 
-            // 4. 创建新 tree（包含已有文件 + 新文件）
             const treeRes = await fetch(`${baseUrl}/git/trees`, {
                 method: 'POST', headers,
                 body: JSON.stringify({
@@ -140,7 +191,6 @@ async function uploadLargeFile(env, filePath, content, message, retries = 3) {
             }
             const treeData = await treeRes.json();
 
-            // 5. 创建新 commit
             const newCommitRes = await fetch(`${baseUrl}/git/commits`, {
                 method: 'POST', headers,
                 body: JSON.stringify({ message, tree: treeData.sha, parents: [parentSha] })
@@ -150,13 +200,11 @@ async function uploadLargeFile(env, filePath, content, message, retries = 3) {
             }
             const newCommitData = await newCommitRes.json();
 
-            // 6. 更新分支引用
             const updateRes = await fetch(`${baseUrl}/git/refs/heads/main`, {
                 method: 'PATCH', headers,
                 body: JSON.stringify({ sha: newCommitData.sha, force: false })
             });
 
-            // 409 = 并发冲突，重试
             if (updateRes.status === 409 && attempt < retries) {
                 await new Promise(r => setTimeout(r, 300 * (attempt + 1)));
                 continue;
@@ -166,7 +214,6 @@ async function uploadLargeFile(env, filePath, content, message, retries = 3) {
                 return { status: updateRes.status, data: { error: '更新分支引用失败' } };
             }
 
-            // 成功后触发 CF Pages 部署（如有配置）
             triggerDeploy(env).catch(() => {});
 
             return { status: 200, data: { sha: newCommitData.sha, success: true } };
@@ -179,6 +226,17 @@ async function uploadLargeFile(env, filePath, content, message, retries = 3) {
     }
 }
 
+async function listArchiveDir(env) {
+    const { status, data } = await githubRequest(env, 'archive');
+    if (status !== 200 || !Array.isArray(data)) {
+        return { status, files: [] };
+    }
+    return {
+        status: 200,
+        files: data.filter(f => f.type === 'file').map(f => f.name)
+    };
+}
+
 
 // ====== 主路由 ======
 export async function onRequest(context) {
@@ -187,12 +245,7 @@ export async function onRequest(context) {
     const path = url.pathname;
     const method = request.method;
 
-    // CORS 头
-    const corsHeaders = {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, PUT, POST, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization'
-    };
+    const corsHeaders = corsHeadersFor(request);
     if (method === 'OPTIONS') {
         return new Response(null, { headers: corsHeaders });
     }
@@ -205,9 +258,9 @@ export async function onRequest(context) {
 
     // ---------- 公开路由（无需登录） ----------
 
-    // GET /api/ping — 探针
+    // GET /api/ping — 仅返回存活状态，不暴露密钥/仓库信息
     if (method === 'GET' && path === '/api/ping') {
-        return json({ pong: true, hasToken: !!env.GITHUB_TOKEN, hasPassword: !!env.ADMIN_PASSWORD, repo: env.GITHUB_REPO || '未设置' });
+        return json({ ok: true });
     }
 
     // GET /api/articles — 读取 index.json
@@ -226,12 +279,23 @@ export async function onRequest(context) {
         return json(data);
     }
 
-    // POST /api/auth — 管理员登录
+    // POST /api/auth — 管理员登录（失败限速）
     if (method === 'POST' && path === '/api/auth') {
-        const body = await request.json();
-        if (body.password !== env.ADMIN_PASSWORD) {
+        const ip = clientIp(request);
+        if (loginBlocked(ip)) {
+            return json({ error: '尝试过多，请 5 分钟后再试' }, 429);
+        }
+        let body;
+        try {
+            body = await request.json();
+        } catch (e) {
+            return json({ error: '无效请求' }, 400);
+        }
+        if (!env.ADMIN_PASSWORD || body.password !== env.ADMIN_PASSWORD) {
+            recordLoginFail(ip);
             return json({ error: '密码错误' }, 403);
         }
+        clearLoginFails(ip);
         const token = createSession();
         return json({ token });
     }
@@ -245,19 +309,73 @@ export async function onRequest(context) {
     // ---------- 管理员路由（需要 Bearer token） ----------
 
     const writePaths = [
-        { method: 'PUT',  prefix: '/api/articles' },      // 更新 index.json
-        { method: 'PUT',  prefix: '/api/archive/' },       // 上传 HTML 文件
-        { method: 'DELETE', prefix: '/api/archive/' }       // 删除 HTML 文件
+        { method: 'PUT',  prefix: '/api/articles' },
+        { method: 'PUT',  prefix: '/api/archive/' },
+        { method: 'DELETE', prefix: '/api/archive/' }
     ];
 
-    const needsAuth = writePaths.some(p => method === p.method && path.startsWith(p.prefix));
+    const needsAuth = writePaths.some(p => method === p.method && path.startsWith(p.prefix))
+        || (method === 'GET' && path === '/api/health');
+
     if (needsAuth && !validateSession(request)) {
         return json({ error: '未登录或 session 已过期' }, 401);
     }
 
-    // PUT /api/articles — 更新 index.json（Contents API，文件小不走 Git Data）
+    // GET /api/health — 管理员：索引与 archive 一致性 + 配置是否齐全（不返回密钥值）
+    if (method === 'GET' && path === '/api/health') {
+        const { status, data } = await githubRequest(env, 'data/index.json');
+        if (status !== 200) {
+            return json({ error: '无法读取索引', detail: data }, 500);
+        }
+        let articles = [];
+        try {
+            articles = JSON.parse(decodeBase64(data.content));
+        } catch (e) {
+            return json({ error: '索引解析失败' }, 500);
+        }
+        const { status: listStatus, files } = await listArchiveDir(env);
+        if (listStatus !== 200) {
+            return json({ error: '无法列出 archive/', status: listStatus }, 500);
+        }
+        const indexFiles = articles.map(a => a.filename).filter(Boolean);
+        const fileSet = new Set(files);
+        const indexSet = new Set(indexFiles);
+        const missingFiles = indexFiles.filter(f => !fileSet.has(f));
+        const orphanFiles = files.filter(f => !indexSet.has(f));
+        const shortcodes = articles.map(a => a.shortcode).filter(Boolean);
+        const shortcodeDupes = shortcodes.filter((s, i) => shortcodes.indexOf(s) !== i);
+        return json({
+            ok: missingFiles.length === 0 && orphanFiles.length === 0 && shortcodeDupes.length === 0,
+            articleCount: articles.length,
+            archiveCount: files.length,
+            missingFiles,
+            orphanFiles,
+            duplicateShortcodes: [...new Set(shortcodeDupes)],
+            config: {
+                hasToken: !!env.GITHUB_TOKEN,
+                hasPassword: !!env.ADMIN_PASSWORD,
+                hasRepo: !!env.GITHUB_REPO,
+                hasDeployHook: !!env.CF_DEPLOY_HOOK_URL
+            }
+        });
+    }
+
+    // PUT /api/articles — 更新 index.json
     if (method === 'PUT' && path === '/api/articles') {
         const body = await request.json();
+        // 短码唯一性校验
+        try {
+            const decoded = JSON.parse(decodeBase64(body.content));
+            if (Array.isArray(decoded)) {
+                const codes = decoded.map(a => a.shortcode).filter(Boolean);
+                const dup = codes.find((s, i) => codes.indexOf(s) !== i);
+                if (dup) {
+                    return json({ error: `短码重复: ${dup}` }, 400);
+                }
+            }
+        } catch (e) {
+            // 非预期内容仍交给 GitHub，但记录
+        }
         const putBody = {
             message: body.message || '更新索引',
             content: body.content,
@@ -273,7 +391,7 @@ export async function onRequest(context) {
         return json(data);
     }
 
-    // PUT /api/archive/:filename — 上传大文件 HTML（Git Data API，≤100MB）
+    // PUT /api/archive/:filename — 上传大文件 HTML
     if (method === 'PUT' && path.startsWith('/api/archive/')) {
         const filename = decodeURIComponent(path.replace('/api/archive/', ''));
         const body = await request.json();
@@ -284,7 +402,7 @@ export async function onRequest(context) {
         return json(result.data);
     }
 
-    // DELETE /api/archive/:filename — 删除 HTML 文件（Contents API 可删任意大小）
+    // DELETE /api/archive/:filename — 删除 HTML 文件
     if (method === 'DELETE' && path.startsWith('/api/archive/')) {
         const filename = decodeURIComponent(path.replace('/api/archive/', ''));
         const body = await request.json();
@@ -298,6 +416,5 @@ export async function onRequest(context) {
         return json({ ok: true });
     }
 
-    // 未匹配路由
     return json({ error: 'Not Found' }, 404);
 }
