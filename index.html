@@ -11,9 +11,10 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <!-- 顶部导航 -->
+    <div class="site-shell">
+    <!-- 顶部导航：置于居中内容柱内，不贯通全屏 -->
     <header class="blog-header">
-        <div class="container header-container">
+        <div class="header-container">
             <div class="brand">
                 <span class="brand-emoji">📚</span>
                 <div class="brand-text">
@@ -49,68 +50,20 @@
         </div>
     </header>
 
-    <!-- 欢迎及引导横幅 -->
+    <!-- 欢迎横幅：圆角卡片，不贯通 -->
     <section class="hero-section">
-        <div class="container hero-container">
+        <div class="hero-container">
             <h2>静态网页与知识脚本的数字保险箱</h2>
             <p>基于 GitHub 存储 + Cloudflare Pages 托管的轻量级个人知识归档与备份空间。</p>
         </div>
     </section>
 
-    <!-- 侧栏开关（移动端；不改顶栏） -->
+    <!-- 侧栏开关（移动端抽屉从右侧滑出） -->
     <button type="button" id="sidebarToggle" class="sidebar-toggle" aria-expanded="false" aria-controls="siteSidebar">☰ 侧栏</button>
     <div id="sidebarBackdrop" class="sidebar-backdrop hidden" aria-hidden="true"></div>
 
-    <!-- 主内容区：左侧栏 + 右侧列表 -->
-    <div class="page-layout container">
-    <aside id="siteSidebar" class="site-sidebar" aria-label="站点侧栏">
-        <div class="sidebar-inner">
-            <section class="sidebar-card profile-card" id="profileCard">
-                <div class="profile-loading">加载名片…</div>
-            </section>
-
-            <section class="sidebar-card stats-card" id="statsCard">
-                <div class="stats-row">
-                    <div class="stat-item">
-                        <span class="stat-num" id="statTotal">0</span>
-                        <span class="stat-label">全部</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-num" id="statMonth">0</span>
-                        <span class="stat-label">本月新增</span>
-                    </div>
-                </div>
-            </section>
-
-            <section class="sidebar-card">
-                <h3 class="sidebar-title">贡献热力图</h3>
-                <div id="heatmap" class="heatmap" title="按归档日期统计"></div>
-                <div class="heatmap-legend">
-                    <span>少</span>
-                    <span class="hm-l0"></span><span class="hm-l1"></span><span class="hm-l2"></span><span class="hm-l3"></span><span class="hm-l4"></span>
-                    <span>多</span>
-                </div>
-            </section>
-
-            <section class="sidebar-card">
-                <h3 class="sidebar-title">分类</h3>
-                <ul class="sidebar-cats" id="sidebarCats">
-                    <!-- filled by JS -->
-                </ul>
-            </section>
-
-            <section class="sidebar-card">
-                <div class="sidebar-title-row">
-                    <h3 class="sidebar-title">近期阅读</h3>
-                    <button type="button" id="clearRecentBtn" class="linkish-btn">清空</button>
-                </div>
-                <ul class="recent-list" id="recentList">
-                    <li class="recent-empty">暂无记录</li>
-                </ul>
-            </section>
-        </div>
-    </aside>
-
+    <!-- 主列 + 右侧栏 -->
+    <div class="page-layout">
     <main class="main-content">
         <!-- 过滤器和排序控制栏 -->
         <div class="control-panel">
@@ -230,7 +183,64 @@
             <button type="button" id="loadMoreBtn" class="load-more-btn">加载更多</button>
         </div>
     </main>
+
+    <aside id="siteSidebar" class="site-sidebar" aria-label="站点侧栏">
+        <div class="sidebar-inner">
+            <section class="sidebar-card profile-card" id="profileCard">
+                <div class="profile-loading">加载名片…</div>
+            </section>
+
+            <section class="sidebar-card stats-card" id="statsCard">
+                <div class="stats-row">
+                    <div class="stat-item">
+                        <span class="stat-num" id="statTotal">0</span>
+                        <span class="stat-label">全部</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-num" id="statMonth">0</span>
+                        <span class="stat-label">本月新增</span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="sidebar-card">
+                <h3 class="sidebar-title">备份热力图</h3>
+                <div id="heatmap" class="heatmap" title="近 16 周按日归档量"></div>
+                <div class="heatmap-legend">
+                    <span>少</span>
+                    <span class="hm-swatch hm-l0"></span><span class="hm-swatch hm-l1"></span><span class="hm-swatch hm-l2"></span><span class="hm-swatch hm-l3"></span><span class="hm-swatch hm-l4"></span>
+                    <span>多</span>
+                </div>
+            </section>
+
+            <section class="sidebar-card">
+                <h3 class="sidebar-title">分类</h3>
+                <ul class="sidebar-cats" id="sidebarCats"></ul>
+            </section>
+
+            <section class="sidebar-card">
+                <div class="sidebar-title-row">
+                    <h3 class="sidebar-title">时间归档</h3>
+                    <button type="button" id="clearMonthBtn" class="linkish-btn hidden">清除</button>
+                </div>
+                <ul class="month-list" id="monthList">
+                    <li class="recent-empty">暂无</li>
+                </ul>
+            </section>
+
+            <section class="sidebar-card">
+                <div class="sidebar-title-row">
+                    <h3 class="sidebar-title">近期阅读</h3>
+                    <button type="button" id="clearRecentBtn" class="linkish-btn">清空</button>
+                </div>
+                <ul class="recent-list" id="recentList">
+                    <li class="recent-empty">暂无记录</li>
+                </ul>
+            </section>
+        </div>
+    </aside>
     </div><!-- /.page-layout -->
+    </div><!-- /.site-shell -->
 
     <!-- 删除确认弹窗 -->
     <div id="deleteModal" class="modal hidden">

@@ -17,6 +17,8 @@ let currentSort = 'newest'; // 记录当前排序方式
 const PAGE_SIZE = 12; // 列表分页：每次多显示的条数
 let displayedCount = PAGE_SIZE;
 let lastRenderList = []; // 当前筛选排序后的完整列表（用于加载更多）
+let currentMonthFilter = null; // 'YYYY-MM' or null — 时间归档
+window.currentMonthFilter = null;
 
 // 初始化
 document.addEventListener('DOMContentLoaded', () => {
@@ -161,19 +163,8 @@ function setupEventListeners() {
     }
 
     // 搜索事件
-    document.getElementById('searchInput').addEventListener('input', (e) => {
-        const keyword = e.target.value.toLowerCase();
-        if (!keyword) {
-            renderArticles(currentArticles, currentFilter);
-            return;
-        }
-        const filtered = currentArticles.filter(a => {
-            const matchTitle = a.title.toLowerCase().includes(keyword);
-            const matchTags = (a.tags || []).some(t => t.toLowerCase().includes(keyword));
-            const matchDesc = (a.description || '').toLowerCase().includes(keyword);
-            return matchTitle || matchTags || matchDesc;
-        });
-        renderArticles(filtered, currentFilter);
+    document.getElementById('searchInput').addEventListener('input', () => {
+        renderArticles(getArticlesForView(), currentFilter);
     });
 
     // 排序按钮点击
@@ -182,7 +173,7 @@ function setupEventListeners() {
             document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             currentSort = btn.dataset.sort;
-            renderArticles(currentArticles, currentFilter);
+            renderArticles(getArticlesForView(), currentFilter);
         });
     });
 }
@@ -215,8 +206,8 @@ async function loadArticles() {
             const content = decodeBase64(data.content);
             currentArticles = JSON.parse(content);
             window.currentArticles = currentArticles;
-            renderArticles(currentArticles, currentFilter);
             if (typeof window.refreshSidebar === 'function') window.refreshSidebar(currentArticles);
+            renderArticles(getArticlesForView(), currentFilter);
         } else if (response.status === 404) {
             currentArticles = [];
             window.currentArticles = currentArticles;
@@ -231,36 +222,62 @@ async function loadArticles() {
     }
 }
 
-// 顶栏 + 侧栏共用的分类筛选（保持两边高亮一致）
-function setCategoryFilter(category) {
-    currentFilter = category || 'all';
-    window.currentFilter = currentFilter;
+function getArticlesForView() {
+    let list = currentArticles;
+    if (currentMonthFilter) {
+        list = list.filter(a => (a.date || '').startsWith(currentMonthFilter));
+    }
+    const keyword = (document.getElementById('searchInput')?.value || '').trim().toLowerCase();
+    if (keyword) {
+        list = list.filter(a => {
+            const matchTitle = a.title.toLowerCase().includes(keyword);
+            const matchTags = (a.tags || []).some(t => t.toLowerCase().includes(keyword));
+            const matchDesc = (a.description || '').toLowerCase().includes(keyword);
+            return matchTitle || matchTags || matchDesc;
+        });
+    }
+    return list;
+}
 
+function syncFilterChrome() {
     document.querySelectorAll('nav.blog-nav a').forEach(l => {
         l.classList.toggle('active', (l.dataset.category || 'all') === currentFilter);
     });
-    if (typeof syncSidebarCategoryActive === 'function') {
-        syncSidebarCategoryActive(currentFilter);
+    if (typeof window.syncSidebarCategoryActive === 'function') {
+        window.syncSidebarCategoryActive(currentFilter);
     } else {
         document.querySelectorAll('.sidebar-cat').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.category === currentFilter);
         });
     }
-
-    const keyword = (document.getElementById('searchInput')?.value || '').trim().toLowerCase();
-    if (!keyword) {
-        renderArticles(currentArticles, currentFilter);
-        return;
-    }
-    const filtered = currentArticles.filter(a => {
-        const matchTitle = a.title.toLowerCase().includes(keyword);
-        const matchTags = (a.tags || []).some(t => t.toLowerCase().includes(keyword));
-        const matchDesc = (a.description || '').toLowerCase().includes(keyword);
-        return matchTitle || matchTags || matchDesc;
+    document.querySelectorAll('.month-item').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.month === currentMonthFilter);
     });
-    renderArticles(filtered, currentFilter);
+    const clearMonth = document.getElementById('clearMonthBtn');
+    if (clearMonth) clearMonth.classList.toggle('hidden', !currentMonthFilter);
+}
+
+// 顶栏 + 侧栏共用的分类筛选（保持两边高亮一致）
+function setCategoryFilter(category) {
+    currentFilter = category || 'all';
+    window.currentFilter = currentFilter;
+    syncFilterChrome();
+    renderArticles(getArticlesForView(), currentFilter);
 }
 window.setCategoryFilter = setCategoryFilter;
+
+function setMonthFilter(ym) {
+    currentMonthFilter = ym || null;
+    window.currentMonthFilter = currentMonthFilter;
+    syncFilterChrome();
+    renderArticles(getArticlesForView(), currentFilter);
+    // 刷新侧栏「清除」按钮显隐（分类计数仍相对全量）
+    if (typeof window.refreshSidebar === 'function') {
+        window.refreshSidebar(currentArticles);
+        syncFilterChrome();
+    }
+}
+window.setMonthFilter = setMonthFilter;
 
 // 渲染文章列表
 function renderArticles(articles, filter = 'all', resetPage = true) {
@@ -353,18 +370,7 @@ function renderArticles(articles, filter = 'all', resetPage = true) {
 
 function loadMoreArticles() {
     displayedCount += PAGE_SIZE;
-    const searchKeyword = (document.getElementById('searchInput')?.value || '').trim();
-    if (searchKeyword) {
-        const filtered = currentArticles.filter(a => {
-            const matchTitle = a.title.toLowerCase().includes(searchKeyword.toLowerCase());
-            const matchTags = (a.tags || []).some(t => t.toLowerCase().includes(searchKeyword.toLowerCase()));
-            const matchDesc = (a.description || '').toLowerCase().includes(searchKeyword.toLowerCase());
-            return matchTitle || matchTags || matchDesc;
-        });
-        renderArticles(filtered, currentFilter, false);
-    } else {
-        renderArticles(currentArticles, currentFilter, false);
-    }
+    renderArticles(getArticlesForView(), currentFilter, false);
 }
 
 async function copyShortLink(shortcode) {
