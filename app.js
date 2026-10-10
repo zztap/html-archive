@@ -14,6 +14,9 @@ let currentArticles = [];
 let deleteIndex = -1;
 let currentFilter = 'all'; // 记录当前选择的分类过滤
 let currentSort = 'newest'; // 记录当前排序方式
+const PAGE_SIZE = 12; // 列表分页：每次多显示的条数
+let displayedCount = PAGE_SIZE;
+let lastRenderList = []; // 当前筛选排序后的完整列表（用于加载更多）
 
 // 初始化
 document.addEventListener('DOMContentLoaded', () => {
@@ -83,16 +86,29 @@ function setupEventListeners() {
     document.getElementById('editForm').addEventListener('submit', handleEdit);
 
     // 文件选择自动填充标题和更新拖拽区文字
-    document.getElementById('fileInput').addEventListener('change', (e) => {
+    document.getElementById('fileInput').addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (file) {
             const name = file.name.replace('.html', '');
             document.getElementById('titleInput').value = name;
-            // 更新拖拽区文字
             const dummy = document.querySelector('.file-dummy-text');
             if (dummy) dummy.textContent = `已选择: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
+            // 预填原文 URL（可手改）
+            const srcInput = document.getElementById('sourceUrlInput');
+            if (srcInput && !srcInput.value) {
+                try {
+                    const head = await readFileHeadAsText(file, 64 * 1024);
+                    const url = extractSourceUrlFromHtml(head);
+                    if (url) srcInput.value = url;
+                } catch (err) {}
+            }
         }
     });
+
+    const loadMoreBtn = document.getElementById('loadMoreBtn');
+    if (loadMoreBtn) {
+        loadMoreBtn.addEventListener('click', () => loadMoreArticles());
+    }
 
     // 拖拽上传支持
     const dropArea = document.querySelector('.file-drop-area');
@@ -192,10 +208,13 @@ async function loadArticles() {
 }
 
 // 渲染文章列表
-function renderArticles(articles, filter = 'all') {
+function renderArticles(articles, filter = 'all', resetPage = true) {
     const grid = document.getElementById('articles');
     const countEl = document.getElementById('resultCount');
+    const moreWrap = document.getElementById('loadMoreWrap');
     const searchKeyword = (document.getElementById('searchInput')?.value || '').trim();
+
+    if (resetPage) displayedCount = PAGE_SIZE;
 
     // 1. 过滤（articles 可能是搜索子集；编辑索引永远相对 currentArticles）
     let list = filter === 'all' ? [...articles] : articles.filter(a => a.category === filter);
@@ -206,12 +225,16 @@ function renderArticles(articles, filter = 'all') {
     } else if (currentSort === 'title') {
         list = [...list].sort((a, b) => a.title.localeCompare(b.title, 'zh-CN'));
     } else {
-        // newest：保持传入顺序（currentArticles 已是新→旧）
         list = [...list];
     }
 
+    lastRenderList = list;
+
     if (countEl) {
-        countEl.textContent = `共 ${list.length} 篇`;
+        const shown = Math.min(displayedCount, list.length);
+        countEl.textContent = list.length === 0
+            ? '共 0 篇'
+            : `显示 ${shown} / ${list.length} 篇`;
     }
 
     if (list.length === 0) {
@@ -222,11 +245,12 @@ function renderArticles(articles, filter = 'all') {
             emptyMsg = `「${CATEGORIES[filter] || filter}」分类下暂无文章`;
         }
         grid.innerHTML = `<p style="text-align:center; color:#666; padding:40px;">${emptyMsg}</p>`;
+        if (moreWrap) moreWrap.classList.add('hidden');
         return;
     }
 
-    grid.innerHTML = list.map((article) => {
-        // 始终用全局索引，避免搜索/筛选后编辑删错条目
+    const page = list.slice(0, displayedCount);
+    grid.innerHTML = page.map((article) => {
         const originalIndex = currentArticles.indexOf(article);
         const viewHref = article.shortcode
             ? `/go/${encodeURIComponent(article.shortcode)}`
@@ -260,6 +284,32 @@ function renderArticles(articles, filter = 'all') {
             </div>
         `;
     }).join('');
+
+    if (moreWrap) {
+        if (displayedCount < list.length) {
+            moreWrap.classList.remove('hidden');
+            const btn = document.getElementById('loadMoreBtn');
+            if (btn) btn.textContent = `加载更多（还有 ${list.length - displayedCount} 篇）`;
+        } else {
+            moreWrap.classList.add('hidden');
+        }
+    }
+}
+
+function loadMoreArticles() {
+    displayedCount += PAGE_SIZE;
+    const searchKeyword = (document.getElementById('searchInput')?.value || '').trim();
+    if (searchKeyword) {
+        const filtered = currentArticles.filter(a => {
+            const matchTitle = a.title.toLowerCase().includes(searchKeyword.toLowerCase());
+            const matchTags = (a.tags || []).some(t => t.toLowerCase().includes(searchKeyword.toLowerCase()));
+            const matchDesc = (a.description || '').toLowerCase().includes(searchKeyword.toLowerCase());
+            return matchTitle || matchTags || matchDesc;
+        });
+        renderArticles(filtered, currentFilter, false);
+    } else {
+        renderArticles(currentArticles, currentFilter, false);
+    }
 }
 
 async function copyShortLink(shortcode) {
@@ -321,6 +371,8 @@ function openEdit(index) {
     document.getElementById('editCategory').value = article.category;
     document.getElementById('editTags').value = (article.tags || []).join(', ');
     document.getElementById('editDescription').value = article.description || '';
+    const editSrc = document.getElementById('editSourceUrl');
+    if (editSrc) editSrc.value = article.sourceUrl || '';
 
     document.getElementById('editPanel').classList.remove('hidden');
     document.getElementById('uploadPanel').classList.add('hidden');
@@ -352,6 +404,7 @@ async function handleEdit(e) {
     const category = document.getElementById('editCategory').value;
     const tags = document.getElementById('editTags').value.split(',').map(t => t.trim()).filter(Boolean);
     const description = document.getElementById('editDescription').value;
+    const sourceUrl = (document.getElementById('editSourceUrl')?.value || '').trim();
 
     showEditStatus('保存中...', 'success');
 
@@ -362,8 +415,10 @@ async function handleEdit(e) {
             title,
             category,
             tags,
-            description
+            description,
+            ...(sourceUrl ? { sourceUrl } : { sourceUrl: undefined })
         };
+        if (!sourceUrl) delete currentArticles[index].sourceUrl;
 
         // 保存到 GitHub
         const indexContent = encodeBase64(JSON.stringify(currentArticles, null, 2));
@@ -422,13 +477,13 @@ async function handleUpload(e) {
     const category = document.getElementById('categoryInput').value;
     const tags = document.getElementById('tagsInput').value.split(',').map(t => t.trim()).filter(Boolean);
     const description = document.getElementById('descriptionInput').value;
+    let sourceUrl = (document.getElementById('sourceUrlInput')?.value || '').trim();
 
     if (!file) {
         showUploadStatus('请选择文件', 'error');
         return;
     }
 
-    // 限制单文件 100MB (GitHub Git Data API 限制)
     if (file.size > 100 * 1024 * 1024) {
         showUploadStatus('文件超过 100MB，GitHub API 拒绝上传', 'error');
         return;
@@ -436,7 +491,6 @@ async function handleUpload(e) {
 
     showUploadStatus('准备上传...', 'success');
 
-    // 显示进度条
     const progressBar = document.getElementById('uploadProgress');
     const progressFill = document.getElementById('progressFill');
     const progressText = document.getElementById('progressText');
@@ -445,12 +499,24 @@ async function handleUpload(e) {
     progressFill.style.width = '0%';
     progressText.textContent = '0%';
 
+    let uploadedFilename = null;
+    let indexPushed = false;
+
     try {
-        // 读取文件
+        // 若表单未填原文，尝试从 SingleFile HTML 元数据解析
+        if (!sourceUrl) {
+            try {
+                const textHead = await readFileHeadAsText(file, 64 * 1024);
+                sourceUrl = extractSourceUrlFromHtml(textHead) || '';
+            } catch (err) {
+                console.warn('解析原文 URL 失败', err);
+            }
+        }
+
         const content = await readFileAsBase64(file);
         const filename = `${Date.now()}_${file.name}`;
+        uploadedFilename = filename;
 
-        // 生成短码：分类前缀 + YYMMDD + 当日序号（确保全局唯一）
         const now = new Date();
         const yymmdd = String(now.getFullYear()).slice(2) +
             String(now.getMonth() + 1).padStart(2, '0') +
@@ -468,11 +534,10 @@ async function handleUpload(e) {
             if (seq > 99) throw new Error('今日短码已用尽，请稍后再试');
         }
 
-        // 使用 XMLHttpRequest 上传 HTML 文件以获取真实的上传进度
         await new Promise((resolve, reject) => {
             const body = JSON.stringify({ message: `添加归档: ${title}`, content });
             const xhr = new XMLHttpRequest();
-            xhr.open('PUT', `${API_BASE}/archive/${filename}`);
+            xhr.open('PUT', `${API_BASE}/archive/${encodeURIComponent(filename)}`);
             if (window.adminToken) {
                 xhr.setRequestHeader('Authorization', `Bearer ${window.adminToken}`);
             }
@@ -490,11 +555,9 @@ async function handleUpload(e) {
                 if (xhr.status >= 200 && xhr.status < 300) {
                     resolve(JSON.parse(xhr.responseText));
                 } else if (xhr.status === 401) {
-                    // session 过期，弹登录框
                     window.adminToken = null;
                     if (typeof window.requireAdmin === 'function') {
                         window.requireAdmin(() => {
-                            // 重新登录后自动重试上传
                             document.getElementById('uploadBtn').click();
                         });
                     }
@@ -507,8 +570,7 @@ async function handleUpload(e) {
             xhr.send(body);
         });
 
-        // HTML 上传成功后，更新索引数据结构
-        currentArticles.unshift({
+        const entry = {
             title,
             filename,
             category,
@@ -516,19 +578,43 @@ async function handleUpload(e) {
             description,
             date: new Date().toISOString().split('T')[0],
             shortcode
-        });
+        };
+        if (sourceUrl) entry.sourceUrl = sourceUrl;
 
-        const indexContent = encodeBase64(JSON.stringify(currentArticles, null, 2));
-        await uploadToGithub(DATA_FILE, indexContent, `更新索引: ${title}`);
+        currentArticles.unshift(entry);
+        indexPushed = true;
+
+        try {
+            const indexContent = encodeBase64(JSON.stringify(currentArticles, null, 2));
+            await uploadToGithub(DATA_FILE, indexContent, `更新索引: ${title}`);
+        } catch (indexErr) {
+            // 索引失败：回滚内存并尽量删除已上传的 HTML，避免孤儿文件
+            if (indexPushed) {
+                currentArticles.shift();
+                indexPushed = false;
+            }
+            showUploadStatus('索引更新失败，正在清理已上传文件…', 'error');
+            try {
+                await deleteFromGithub(`archive/${filename}`, `回滚孤儿文件: ${filename}`);
+                showUploadStatus('上传失败（索引未写入，已清理孤儿 HTML）: ' + indexErr.message, 'error');
+            } catch (cleanErr) {
+                console.error('清理孤儿失败', cleanErr);
+                showUploadStatus(
+                    '上传失败且清理孤儿未成功，请用健康检查处理: ' + filename + ' — ' + indexErr.message,
+                    'error'
+                );
+            }
+            progressBar.classList.add('hidden');
+            progressText.classList.add('hidden');
+            return;
+        }
 
         showUploadStatus('上传成功！', 'success');
         document.getElementById('uploadForm').reset();
-        // 重置文件拖拽区文字
         const dummy = document.querySelector('.file-dummy-text');
         if (dummy) dummy.textContent = '点击或拖拽 HTML 文件到此区域';
         renderArticles(currentArticles, currentFilter);
 
-        // 2秒后重置和隐藏上传面板
         setTimeout(() => {
             document.getElementById('uploadPanel').classList.add('hidden');
             progressBar.classList.add('hidden');
@@ -536,10 +622,44 @@ async function handleUpload(e) {
         }, 2000);
     } catch (error) {
         console.error('上传失败:', error);
+        // HTML 上传阶段失败时无需清孤儿；若已 push 索引则不应走到这里
+        if (indexPushed) {
+            currentArticles.shift();
+        }
         showUploadStatus('上传失败: ' + error.message, 'error');
         progressBar.classList.add('hidden');
         progressText.classList.add('hidden');
     }
+}
+
+/** 从 SingleFile / 常见 meta 中提取原文 URL */
+function extractSourceUrlFromHtml(html) {
+    if (!html) return '';
+    const patterns = [
+        /(?:^|\n)\s*url:\s*(https?:\/\/\S+)/i,
+        /property=["']og:url["']\s+content=["']([^"']+)["']/i,
+        /content=["']([^"']+)["']\s+property=["']og:url["']/i,
+        /name=["']url["']\s+content=["'](https?:\/\/[^"']+)["']/i,
+        /content=["'](https?:\/\/[^"']+)["']\s+name=["']url["']/i,
+        /<link[^>]+rel=["']canonical["'][^>]+href=["'](https?:\/\/[^"']+)["']/i
+    ];
+    for (const re of patterns) {
+        const m = html.match(re);
+        if (m && m[1]) {
+            return m[1].replace(/[>,\s]+$/, '').trim();
+        }
+    }
+    return '';
+}
+
+function readFileHeadAsText(file, maxBytes) {
+    const blob = file.slice(0, maxBytes);
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = reject;
+        reader.readAsText(blob);
+    });
 }
 
 // 废弃 readAsBinaryString -> 安全读取为 ArrayBuffer，并编码为 Base64
@@ -680,3 +800,5 @@ function escapeHtml(text) {
 }
 window.copyShortLink = copyShortLink;
 window.runHealthCheck = runHealthCheck;
+
+window.loadMoreArticles = loadMoreArticles;

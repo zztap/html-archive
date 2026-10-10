@@ -43,7 +43,12 @@ function buildShell(article, archivePath) {
     const title = escapeHtml(article.title || article.shortcode || '归档');
     const date = escapeHtml(article.date || '');
     const desc = escapeHtml(article.description || '');
-    // 原文 URL 未存索引时仅提供回归档站
+    const rawSource = (article.sourceUrl || article.originalUrl || '').trim();
+    // 仅允许 http(s) 原文链接，避免 javascript: 等
+    const safeSource = /^https?:\/\//i.test(rawSource) ? rawSource : '';
+    const sourceLink = safeSource
+        ? `<a href="${escapeHtml(safeSource)}" target="_blank" rel="noopener noreferrer">打开原文</a>`
+        : '';
     return `<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -65,6 +70,7 @@ function buildShell(article, archivePath) {
   <div id="bar">
     <a href="/">← 回归档站</a>
     <a href="${escapeHtml(archivePath)}" target="_blank" rel="noopener">仅打开正文</a>
+    ${sourceLink}
     <span>${title}</span>
     <span class="meta">${date}${desc ? ' · ' + desc : ''}</span>
   </div>
