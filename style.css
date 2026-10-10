@@ -907,3 +907,23 @@ body {
 .health-btn:hover {
     background: #eef2ff;
 }
+
+
+.load-more-wrap {
+    display: flex;
+    justify-content: center;
+    padding: 8px 0 40px;
+}
+.load-more-wrap.hidden { display: none; }
+.load-more-btn {
+    background: var(--primary, #3b82f6);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 10px 22px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(59, 130, 246, 0.25);
+}
+.load-more-btn:hover { filter: brightness(1.05); }

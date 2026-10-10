@@ -15,3 +15,7 @@
 ## 源真相
 
 GitHub `main` + Cloudflare Pages 部署产物为准；本地 `archive/` 可不完整。
+
+索引可选字段 `sourceUrl`（原文链接）：上传时从表单或 SingleFile HTML 头解析；`/go/` 顶栏在合法 http(s) 时展示「打开原文」。
+上传若 HTML 已写入而索引失败，前端会尝试删除该 HTML 以免孤儿文件。
+

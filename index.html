@@ -106,6 +106,10 @@
                         <input type="text" id="descriptionInput" placeholder="请输入简短的摘要介绍，便于后续检索">
                     </div>
                     <div class="form-group full-width">
+                        <label for="sourceUrlInput">原文链接（可选，可从 SingleFile 自动识别）</label>
+                        <input type="url" id="sourceUrlInput" placeholder="https://... 选择文件后常会自动填入">
+                    </div>
+                    <div class="form-group full-width">
                         <label for="tagsInput">相关标签（逗号分隔）</label>
                         <input type="text" id="tagsInput" placeholder="例如：Python, 效率工具, 机器学习">
                     </div>
@@ -152,6 +156,10 @@
                         <label for="editDescription">文章描述/摘要</label>
                         <input type="text" id="editDescription" placeholder="修改描述摘要信息...">
                     </div>
+                    <div class="form-group full-width">
+                        <label for="editSourceUrl">原文链接</label>
+                        <input type="url" id="editSourceUrl" placeholder="https://...">
+                    </div>
                 </div>
                 <div class="panel-actions">
                     <button type="submit" class="submit-btn">保存修改</button>
@@ -165,6 +173,9 @@
         <section id="articles" class="articles-grid">
             <!-- 由 app.js 动态生成 -->
         </section>
+        <div id="loadMoreWrap" class="load-more-wrap hidden">
+            <button type="button" id="loadMoreBtn" class="load-more-btn">加载更多</button>
+        </div>
     </main>
 
     <!-- 删除确认弹窗 -->
