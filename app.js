@@ -20,6 +20,8 @@ let lastRenderList = []; // 当前筛选排序后的完整列表（用于加载�
 
 // 初始化
 document.addEventListener('DOMContentLoaded', () => {
+    window.currentFilter = currentFilter;
+    window.currentArticles = currentArticles;
     loadArticles();
     setupEventListeners();
 });
@@ -68,14 +70,11 @@ function setupEventListeners() {
         deleteIndex = -1;
     });
 
-    // 导航分类
-    document.querySelectorAll('nav a').forEach(link => {
+    // 导航分类（与侧栏同步）
+    document.querySelectorAll('nav.blog-nav a').forEach(link => {
         link.addEventListener('click', (e) => {
             e.preventDefault();
-            document.querySelectorAll('nav a').forEach(l => l.classList.remove('active'));
-            link.classList.add('active');
-            currentFilter = link.dataset.category; // 保存当前选中的过滤器
-            renderArticles(currentArticles, currentFilter);
+            setCategoryFilter(link.dataset.category || 'all');
         });
     });
 
@@ -109,6 +108,27 @@ function setupEventListeners() {
     if (loadMoreBtn) {
         loadMoreBtn.addEventListener('click', () => loadMoreArticles());
     }
+
+    // 记录近期阅读（标题 / 查看）
+    const articlesEl = document.getElementById('articles');
+    if (articlesEl && !articlesEl.dataset.recentBound) {
+        articlesEl.dataset.recentBound = '1';
+        articlesEl.addEventListener('click', (e) => {
+            const a = e.target.closest('a[data-recent="1"]');
+            if (!a) return;
+            const card = a.closest('.article-card');
+            if (!card) return;
+            const title = card.querySelector('.card-title-link')?.textContent?.trim() || '';
+            const chip = card.querySelector('.shortcode-chip')?.textContent?.trim() || '';
+            const href = a.getAttribute('href') || '';
+            let filename = '';
+            if (href.includes('/archive/')) {
+                try { filename = decodeURIComponent(href.split('/archive/')[1] || ''); } catch (err) {}
+            }
+            recordArticleOpen({ title, shortcode: chip, filename });
+        });
+    }
+
 
     // 拖拽上传支持
     const dropArea = document.querySelector('.file-drop-area');
@@ -194,10 +214,14 @@ async function loadArticles() {
             const data = await response.json();
             const content = decodeBase64(data.content);
             currentArticles = JSON.parse(content);
+            window.currentArticles = currentArticles;
             renderArticles(currentArticles, currentFilter);
+            if (typeof window.refreshSidebar === 'function') window.refreshSidebar(currentArticles);
         } else if (response.status === 404) {
             currentArticles = [];
+            window.currentArticles = currentArticles;
             renderArticles([], currentFilter);
+            if (typeof window.refreshSidebar === 'function') window.refreshSidebar(currentArticles);
         } else {
             throw new Error('加载失败');
         }
@@ -206,6 +230,37 @@ async function loadArticles() {
         document.getElementById('articles').innerHTML = '<p style="text-align:center; color:#e74c3c; padding:40px;">加载失败，请检查配置</p>';
     }
 }
+
+// 顶栏 + 侧栏共用的分类筛选（保持两边高亮一致）
+function setCategoryFilter(category) {
+    currentFilter = category || 'all';
+    window.currentFilter = currentFilter;
+
+    document.querySelectorAll('nav.blog-nav a').forEach(l => {
+        l.classList.toggle('active', (l.dataset.category || 'all') === currentFilter);
+    });
+    if (typeof syncSidebarCategoryActive === 'function') {
+        syncSidebarCategoryActive(currentFilter);
+    } else {
+        document.querySelectorAll('.sidebar-cat').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.category === currentFilter);
+        });
+    }
+
+    const keyword = (document.getElementById('searchInput')?.value || '').trim().toLowerCase();
+    if (!keyword) {
+        renderArticles(currentArticles, currentFilter);
+        return;
+    }
+    const filtered = currentArticles.filter(a => {
+        const matchTitle = a.title.toLowerCase().includes(keyword);
+        const matchTags = (a.tags || []).some(t => t.toLowerCase().includes(keyword));
+        const matchDesc = (a.description || '').toLowerCase().includes(keyword);
+        return matchTitle || matchTags || matchDesc;
+    });
+    renderArticles(filtered, currentFilter);
+}
+window.setCategoryFilter = setCategoryFilter;
 
 // 渲染文章列表
 function renderArticles(articles, filter = 'all', resetPage = true) {
@@ -258,7 +313,7 @@ function renderArticles(articles, filter = 'all', resetPage = true) {
         return `
             <div class="article-card">
                 <div class="card-header">
-                    <h3><a href="${viewHref}" target="_blank" class="card-title-link">${escapeHtml(article.title)}</a></h3>
+                    <h3><a href="${viewHref}" target="_blank" class="card-title-link" data-recent="1">${escapeHtml(article.title)}</a></h3>
                     <div class="meta">
                         <span class="category-tag ${article.category}">${CATEGORIES[article.category] || article.category}</span>
                         <span class="date">${article.date}</span>
@@ -273,7 +328,7 @@ function renderArticles(articles, filter = 'all', resetPage = true) {
                 </div>
                 <div class="card-footer">
                     <div class="actions">
-                        <a href="${viewHref}" target="_blank" class="view-btn">查看</a>
+                        <a href="${viewHref}" target="_blank" class="view-btn" data-recent="1">查看</a>
                         ${article.shortcode ? `<button type="button" class="copy-btn" onclick="copyShortLink('${escapeHtml(article.shortcode)}')">复制短链</button>` : ''}
                         ${window.isAdmin && window.isAdmin() && originalIndex >= 0 ? `
                             <button class="edit-btn" onclick="openEdit(${originalIndex})">编辑</button>
@@ -425,7 +480,9 @@ async function handleEdit(e) {
         await uploadToGithub(DATA_FILE, indexContent, `编辑文章: ${title}`);
 
         showEditStatus('保存成功！', 'success');
+        window.currentArticles = currentArticles;
         renderArticles(currentArticles, currentFilter);
+        if (typeof window.refreshSidebar === 'function') window.refreshSidebar(currentArticles);
 
         // 2秒后隐藏编辑面板
         setTimeout(() => {
@@ -457,7 +514,9 @@ async function handleDelete() {
         // 关闭弹窗并刷新
         document.getElementById('deleteModal').classList.add('hidden');
         deleteIndex = -1;
+        window.currentArticles = currentArticles;
         renderArticles(currentArticles, currentFilter);
+        if (typeof window.refreshSidebar === 'function') window.refreshSidebar(currentArticles);
     } catch (error) {
         console.error('删除失败:', error);
         alert('删除失败: ' + error.message);
@@ -613,7 +672,9 @@ async function handleUpload(e) {
         document.getElementById('uploadForm').reset();
         const dummy = document.querySelector('.file-dummy-text');
         if (dummy) dummy.textContent = '点击或拖拽 HTML 文件到此区域';
+        window.currentArticles = currentArticles;
         renderArticles(currentArticles, currentFilter);
+        if (typeof window.refreshSidebar === 'function') window.refreshSidebar(currentArticles);
 
         setTimeout(() => {
             document.getElementById('uploadPanel').classList.add('hidden');
@@ -802,3 +863,10 @@ window.copyShortLink = copyShortLink;
 window.runHealthCheck = runHealthCheck;
 
 window.loadMoreArticles = loadMoreArticles;
+
+function recordArticleOpen(article) {
+    if (typeof window.recordRecentReading === 'function') {
+        window.recordRecentReading(article);
+    }
+}
+window.recordArticleOpen = recordArticleOpen;
