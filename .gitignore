@@ -1,0 +1,14 @@
+# 本地备份，不进仓库
+*.zip
+html-archive.zip
+
+# 系统与编辑器
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# 依赖 / 本地工具
+node_modules/
+.wrangler/
