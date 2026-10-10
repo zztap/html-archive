@@ -14,9 +14,9 @@ let currentArticles = [];
 let deleteIndex = -1;
 let currentFilter = 'all'; // 记录当前选择的分类过滤
 let currentSort = 'newest'; // 记录当前排序方式
-const PAGE_SIZE = 12; // 列表分页：每次多显示的条数
-let displayedCount = PAGE_SIZE;
-let lastRenderList = []; // 当前筛选排序后的完整列表（用于加载更多）
+const PAGE_SIZE = 10; // 每页条数
+let currentPage = 1;
+let lastRenderList = []; // 当前筛选排序后的完整列表
 let currentMonthFilter = null; // 'YYYY-MM' or null — 时间归档
 window.currentMonthFilter = null;
 
@@ -106,10 +106,6 @@ function setupEventListeners() {
         }
     });
 
-    const loadMoreBtn = document.getElementById('loadMoreBtn');
-    if (loadMoreBtn) {
-        loadMoreBtn.addEventListener('click', () => loadMoreArticles());
-    }
 
     // 记录近期阅读（标题 / 查看）
     const articlesEl = document.getElementById('articles');
@@ -279,14 +275,14 @@ function setMonthFilter(ym) {
 }
 window.setMonthFilter = setMonthFilter;
 
-// 渲染文章列表
+// 渲染文章列表（编号分页）
 function renderArticles(articles, filter = 'all', resetPage = true) {
     const grid = document.getElementById('articles');
     const countEl = document.getElementById('resultCount');
-    const moreWrap = document.getElementById('loadMoreWrap');
+    const pagerWrap = document.getElementById('pagerWrap');
     const searchKeyword = (document.getElementById('searchInput')?.value || '').trim();
 
-    if (resetPage) displayedCount = PAGE_SIZE;
+    if (resetPage) currentPage = 1;
 
     // 1. 过滤（articles 可能是搜索子集；编辑索引永远相对 currentArticles）
     let list = filter === 'all' ? [...articles] : articles.filter(a => a.category === filter);
@@ -301,28 +297,34 @@ function renderArticles(articles, filter = 'all', resetPage = true) {
     }
 
     lastRenderList = list;
-
-    if (countEl) {
-        const shown = Math.min(displayedCount, list.length);
-        countEl.textContent = list.length === 0
-            ? '共 0 篇'
-            : `显示 ${shown} / ${list.length} 篇`;
-    }
+    const totalPages = Math.max(1, Math.ceil(list.length / PAGE_SIZE) || 1);
+    if (currentPage > totalPages) currentPage = totalPages;
+    if (currentPage < 1) currentPage = 1;
 
     if (list.length === 0) {
+        if (countEl) countEl.textContent = '共 0 篇';
         let emptyMsg = '暂无文章';
         if (searchKeyword) {
             emptyMsg = `没有找到与「${escapeHtml(searchKeyword)}」匹配的归档`;
         } else if (filter !== 'all') {
             emptyMsg = `「${CATEGORIES[filter] || filter}」分类下暂无文章`;
+        } else if (currentMonthFilter) {
+            emptyMsg = '该月份暂无文章';
         }
         grid.innerHTML = `<p style="text-align:center; color:#666; padding:40px;">${emptyMsg}</p>`;
-        if (moreWrap) moreWrap.classList.add('hidden');
+        renderPager(0, 1);
         return;
     }
 
-    const page = list.slice(0, displayedCount);
-    grid.innerHTML = page.map((article) => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    const end = Math.min(start + PAGE_SIZE, list.length);
+    const pageItems = list.slice(start, end);
+
+    if (countEl) {
+        countEl.textContent = `显示 ${start + 1}–${end} / ${list.length} 篇 · 第 ${currentPage}/${totalPages} 页`;
+    }
+
+    grid.innerHTML = pageItems.map((article) => {
         const originalIndex = currentArticles.indexOf(article);
         const viewHref = article.shortcode
             ? `/go/${encodeURIComponent(article.shortcode)}`
@@ -357,20 +359,61 @@ function renderArticles(articles, filter = 'all', resetPage = true) {
         `;
     }).join('');
 
-    if (moreWrap) {
-        if (displayedCount < list.length) {
-            moreWrap.classList.remove('hidden');
-            const btn = document.getElementById('loadMoreBtn');
-            if (btn) btn.textContent = `加载更多（还有 ${list.length - displayedCount} 篇）`;
-        } else {
-            moreWrap.classList.add('hidden');
-        }
-    }
+    renderPager(list.length, totalPages);
 }
 
-function loadMoreArticles() {
-    displayedCount += PAGE_SIZE;
+/** 生成页码序列：含首页/末页省略，如 [1, '…', 4, 5, 6, '…', 12] */
+function buildPageNumbers(current, total) {
+    if (total <= 7) {
+        return Array.from({ length: total }, (_, i) => i + 1);
+    }
+    const set = new Set([1, total, current, current - 1, current + 1, current - 2, current + 2]);
+    const nums = [...set].filter(n => n >= 1 && n <= total).sort((a, b) => a - b);
+    const out = [];
+    for (let i = 0; i < nums.length; i++) {
+        if (i > 0 && nums[i] - nums[i - 1] > 1) out.push('…');
+        out.push(nums[i]);
+    }
+    return out;
+}
+
+function renderPager(totalItems, totalPages) {
+    const wrap = document.getElementById('pagerWrap');
+    if (!wrap) return;
+    if (!totalItems || totalPages <= 1) {
+        wrap.classList.add('hidden');
+        wrap.innerHTML = '';
+        return;
+    }
+    wrap.classList.remove('hidden');
+    const pages = buildPageNumbers(currentPage, totalPages);
+    const prevDisabled = currentPage <= 1 ? ' disabled' : '';
+    const nextDisabled = currentPage >= totalPages ? ' disabled' : '';
+    wrap.innerHTML = `
+        <button type="button" class="pager-btn" data-page="1"${currentPage === 1 ? ' disabled' : ''}>首页</button>
+        <button type="button" class="pager-btn pager-nav" data-page="${currentPage - 1}"${prevDisabled}>上一页</button>
+        ${pages.map(p => {
+            if (p === '…') return '<span class="pager-ellipsis" aria-hidden="true">…</span>';
+            const active = p === currentPage ? ' active' : '';
+            return `<button type="button" class="pager-btn${active}" data-page="${p}" aria-current="${p === currentPage ? 'page' : 'false'}">${p}</button>`;
+        }).join('')}
+        <button type="button" class="pager-btn pager-nav" data-page="${currentPage + 1}"${nextDisabled}>下一页</button>
+        <button type="button" class="pager-btn" data-page="${totalPages}"${currentPage === totalPages ? ' disabled' : ''}>末页</button>
+    `;
+    wrap.querySelectorAll('.pager-btn:not([disabled])').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const p = parseInt(btn.dataset.page, 10);
+            if (!p || p === currentPage) return;
+            goToPage(p);
+        });
+    });
+}
+
+function goToPage(page) {
+    currentPage = page;
     renderArticles(getArticlesForView(), currentFilter, false);
+    const panel = document.querySelector('.control-panel') || document.getElementById('articles');
+    if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 async function copyShortLink(shortcode) {
@@ -868,7 +911,7 @@ function escapeHtml(text) {
 window.copyShortLink = copyShortLink;
 window.runHealthCheck = runHealthCheck;
 
-window.loadMoreArticles = loadMoreArticles;
+window.goToPage = goToPage;
 
 function recordArticleOpen(article) {
     if (typeof window.recordRecentReading === 'function') {
