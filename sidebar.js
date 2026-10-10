@@ -82,13 +82,16 @@ function renderSidebarCats(articles, active) {
     articles.forEach(a => {
         if (counts[a.category] != null) counts[a.category] += 1;
     });
+    const total = Math.max(articles.length, 1);
     ul.innerHTML = Object.keys(CAT_META).map(key => {
         const meta = CAT_META[key];
+        const n = counts[key] || 0;
+        const pct = key === 'all' ? 100 : Math.round((n / total) * 100);
         const isActive = (active || 'all') === key;
         return `<li>
             <button type="button" class="sidebar-cat${isActive ? ' active' : ''}" data-category="${key}">
-                <span>${meta.label}</span>
-                <span class="cat-count">${counts[key] || 0}</span>
+                <span class="cat-row"><span>${meta.label}</span><span class="cat-count">${n}</span></span>
+                <span class="cat-bar" aria-hidden="true"><span class="cat-bar-fill" style="width:${pct}%"></span></span>
             </button>
         </li>`;
     }).join('');
@@ -102,7 +105,48 @@ function renderSidebarCats(articles, active) {
     });
 }
 
-/** 近 53 周贡献热力图（按 article.date YYYY-MM-DD） */
+/** 时间归档：按 YYYY-MM 聚合，点击筛选 */
+function renderMonthArchive(articles) {
+    const ul = document.getElementById('monthList');
+    const clearBtn = document.getElementById('clearMonthBtn');
+    if (!ul) return;
+    const map = new Map();
+    articles.forEach(a => {
+        const ym = (a.date || '').slice(0, 7);
+        if (!/^\d{4}-\d{2}$/.test(ym)) return;
+        map.set(ym, (map.get(ym) || 0) + 1);
+    });
+    const months = [...map.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+    const active = window.currentMonthFilter || '';
+    if (clearBtn) clearBtn.classList.toggle('hidden', !active);
+
+    if (!months.length) {
+        ul.innerHTML = '<li class="recent-empty">暂无</li>';
+        return;
+    }
+    ul.innerHTML = months.map(([ym, n]) => {
+        const [y, m] = ym.split('-');
+        const label = `${y} 年 ${Number(m)} 月`;
+        const isActive = active === ym;
+        return `<li>
+            <button type="button" class="month-item${isActive ? ' active' : ''}" data-month="${ym}">
+                <span>${label}</span>
+                <span class="cat-count">${n}</span>
+            </button>
+        </li>`;
+    }).join('');
+
+    ul.querySelectorAll('.month-item').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const ym = btn.dataset.month;
+            if (typeof window.setMonthFilter === 'function') {
+                window.setMonthFilter(window.currentMonthFilter === ym ? null : ym);
+            }
+        });
+    });
+}
+
+/** 近 16 周备份热力图：周为列、日为行；宽度自适应，无横向滚动 */
 function renderHeatmap(articles) {
     const root = document.getElementById('heatmap');
     if (!root) return;
@@ -114,26 +158,20 @@ function renderHeatmap(articles) {
         counts.set(d, (counts.get(d) || 0) + 1);
     });
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    // 对齐到本周周日结束，向前 53 周
-    const end = new Date(today);
-    const day = end.getDay(); // 0 Sun
-    // 用周一为一列起点更接近 GitHub：把 week 起点设为周日
-    const cells = [];
-    // 53*7 = 371 days ending today
-    const totalDays = 53 * 7;
+    const WEEKS = 16;
+    const end = new Date();
+    end.setHours(0, 0, 0, 0);
+    // 本周周日为最后一列末尾；起点对齐到周日
     const start = new Date(end);
-    start.setDate(start.getDate() - (totalDays - 1));
-    // align start to Sunday
+    start.setDate(start.getDate() - (WEEKS * 7 - 1));
     start.setDate(start.getDate() - start.getDay());
 
     const weeks = [];
-    let cursor = new Date(start);
-    while (cursor <= end || weeks.length < 53) {
+    const cursor = new Date(start);
+    for (let w = 0; w < WEEKS; w++) {
         const week = [];
         for (let i = 0; i < 7; i++) {
-            const key = cursor.toISOString().slice(0, 10);
+            const key = localDateKey(cursor);
             const c = counts.get(key) || 0;
             let level = 0;
             if (c >= 4) level = 4;
@@ -145,19 +183,28 @@ function renderHeatmap(articles) {
             cursor.setDate(cursor.getDate() + 1);
         }
         weeks.push(week);
-        if (weeks.length >= 53 && cursor > end) break;
-        if (weeks.length > 60) break;
     }
 
-    root.innerHTML = weeks.map(week =>
-        `<div class="hm-week">${week.map(cell => {
-            if (cell.level < 0) {
-                return `<span class="hm-cell hm-empty" data-date="${cell.key}"></span>`;
-            }
-            const tip = `${cell.key} · ${cell.count} 篇`;
-            return `<span class="hm-cell hm-l${cell.level}" data-date="${cell.key}" data-count="${cell.count}" title="${tip}"></span>`;
-        }).join('')}</div>`
-    ).join('');
+    const dow = ['日', '一', '二', '三', '四', '五', '六'];
+    root.style.setProperty('--hm-weeks', String(WEEKS));
+    root.innerHTML =
+        `<div class="hm-dow">${dow.map(d => `<span>${d}</span>`).join('')}</div>` +
+        `<div class="hm-grid">${weeks.map(week =>
+            `<div class="hm-week">${week.map(cell => {
+                if (cell.level < 0) {
+                    return `<span class="hm-cell hm-empty" aria-hidden="true"></span>`;
+                }
+                const tip = `${cell.key} · ${cell.count} 篇`;
+                return `<span class="hm-cell hm-l${cell.level}" title="${tip}" data-date="${cell.key}" data-count="${cell.count}"></span>`;
+            }).join('')}</div>`
+        ).join('')}</div>`;
+}
+
+function localDateKey(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
 }
 
 function getRecent() {
@@ -232,6 +279,7 @@ window.refreshSidebar = function(articles) {
         ? window.currentFilter
         : (document.querySelector('nav.blog-nav a.active')?.dataset.category || 'all');
     renderSidebarCats(list, active);
+    renderMonthArchive(list);
     renderRecentList();
 };
 
@@ -264,6 +312,13 @@ function setupSidebarChrome() {
         clearBtn.addEventListener('click', () => {
             localStorage.removeItem(RECENT_KEY);
             renderRecentList();
+        });
+    }
+
+    const clearMonth = document.getElementById('clearMonthBtn');
+    if (clearMonth) {
+        clearMonth.addEventListener('click', () => {
+            if (typeof window.setMonthFilter === 'function') window.setMonthFilter(null);
         });
     }
 
